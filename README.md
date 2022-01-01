@@ -1,4 +1,11 @@
-## Go 版本武神日常
+## Go 版本武神活跃号日常
+
+- 自动师门
+- 自动副本(进出小树林)
+- 追捕扫荡
+- 领取签到奖励、节日奖励  
+- 结束自动挖矿
+- 支持定时、多账号
 
 ### 配置
 
@@ -14,7 +21,9 @@
 
 ### 编译
 
-    make build os=windows arch=amd64
+#### Linux
+    示例:
+        make build os=windows arch=amd64
     参数:
         os：操作系统 默认windows
             可选参数：darwin,freebsd,linux,windows
@@ -25,3 +34,5 @@
         make build os=darwin
         编译linux arm可执行程序
         make build os=linux arch=arm
+#### Win
+    自行查找GOLANG在windowns下如何交叉编译
