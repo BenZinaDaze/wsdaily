@@ -1,0 +1,809 @@
+/*
+ * @Description: 武神活跃号日常
+ * @Author: benz1
+ * @Date: 2021-12-29 16:10:57
+ * @LastEditTime: 2022-01-02 01:12:48
+ * @LastEditors: benz1
+ * @Reference:
+ */
+
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"math/rand"
+	"net/http"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/gorilla/websocket"
+	"github.com/robfig/cron"
+	"gopkg.in/yaml.v2"
+)
+
+type User struct {
+	name   string /* 姓名 */
+	id     string /* id */
+	token  string /* 登录凭证 */
+	server int    /* 区 */
+}
+
+type Conf struct {
+	Cron   string `yaml:"cron"`
+	Logins []struct {
+		Login    string `yaml:"login"`
+		Password string `yaml:"password"`
+		Server   int    `yaml:"server"`
+	}
+}
+
+var (
+	wg    sync.WaitGroup
+	urls  = make(map[int]string) /* WS地址 */
+	users []User
+	conf  Conf
+)
+
+type Timer struct {
+	timer *time.Timer
+}
+
+/**
+* @description:		计时器
+* @param {func} f 	执行的操作
+* @param {int}	t	定时 单位ms
+* @return {*}
+ */
+func (T *Timer) setTimeout(f func(), t int) {
+	T.timer = time.NewTimer(time.Millisecond * time.Duration(t))
+	<-T.timer.C
+	go f()
+}
+
+/**
+ * @description:	清楚定时器
+ * @param {*}
+ * @return {*}
+ */
+func (T *Timer) clearTimeout() {
+	if T.timer != nil {
+		T.timer.Stop()
+	}
+}
+
+/**
+ * @description:	初始化配置
+ * @param {*}
+ * @return {*}
+ */
+func iniConf() {
+	conf = Conf{}
+	c, err := ioutil.ReadFile("./conf.yaml")
+	if err != nil {
+		log4go("读取配置", "ERROR").Fatalln(err)
+		return
+	}
+	err = yaml.Unmarshal(c, &conf)
+	if err != nil {
+		log4go("读取配置", "ERROR").Fatalln(err)
+		return
+	}
+	if conf.Cron == "" || len(conf.Logins) == 0 {
+		log4go("读取配置", "ERROR").Fatalln(`配置文件错误,请检测`)
+	} else {
+		for _, login := range conf.Logins {
+			if login.Login == "" || login.Password == "" || login.Server == 0 {
+				log4go("读取配置", "ERROR").Fatalln(`配置文件错误,请检测`)
+			}
+		}
+	}
+	log4go("读取配置", "INFO").Println(`读取配置成功`)
+}
+
+/**
+ * @description:            格式化打印LOG
+ * @param {string} prefix	前缀
+ * @param {string} message	信息
+ * @return {*}
+ */
+func log4go(name string, msgType string) (logger *log.Logger) {
+	switch msgType {
+	case "INFO":
+		logger = log.New(os.Stdout, "["+name+"]", log.Ldate|log.Ltime)
+	case "ERROR":
+		logger = log.New(os.Stdout, "["+name+" "+msgType+"]", log.Lshortfile|log.Ldate|log.Ltime)
+	}
+	return
+}
+
+/**
+ * @description:	获取武神WS地址
+ * @param {*}
+ * @return {*}		数组MAP
+ */
+func getWsUrl() (urls map[int]string) {
+	methodName := "获取WS连接"
+	resp, err := http.Get("http://game.wsmud.com/game/getserver")
+	if err != nil {
+		log4go(methodName, "ERROR").Fatalln(err)
+		return
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log4go(methodName, "ERROR").Fatalln(err)
+		return
+	}
+	urlsJson := []struct {
+		Id   int    `json:"id"`
+		Port int    `json:"port"`
+		Ip   string `json:"ip"`
+	}{}
+	unmarshal_err := json.Unmarshal(body, &urlsJson)
+	if unmarshal_err != nil {
+		log4go(methodName, "ERROR").Fatalln(unmarshal_err)
+	}
+	urls = make(map[int]string)
+	for _, url := range urlsJson {
+		urls[url.Id] = "ws://" + url.Ip + ":" + strconv.Itoa(url.Port)
+	}
+	if len(urls) == 0 {
+		log4go(methodName, "ERROR").Fatalln("获取URL失败")
+	}
+	log4go(methodName, "INFO").Println("获取WS连接成功")
+	wg.Done()
+	return
+}
+
+/**
+ * @description:            根据账号密码获取token
+ * @param {string} login	账号
+ * @param {string} password	密码
+ * @return {*}
+ */
+func getToken(login string, password string) (token string) {
+	methodName := "获取登录凭证"
+	url := "http://game.wsmud.com/userapi/login"
+	contentType := "application/x-www-form-urlencoded; charset=UTF-8"
+	data := `code=` + login + `&pwd=` + password
+	resp, err := http.Post(url, contentType, strings.NewReader(data))
+	if err != nil {
+		log4go(methodName, "ERROR").Fatalln(err)
+		return
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log4go(methodName, "ERROR").Fatalln(err)
+		return
+	}
+	bodyJson := struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}{}
+	unmarshal_err := json.Unmarshal(body, &bodyJson)
+	if unmarshal_err != nil {
+		log4go(methodName, "ERROR").Fatalln(unmarshal_err)
+	}
+	if bodyJson.Code == 0 {
+		log4go(methodName, "ERROR").Fatalln(bodyJson.Message)
+	}
+	if bodyJson.Code == 1 {
+		cookies := resp.Cookies()
+		token = cookies[0].Value + " " + cookies[1].Value
+		log4go(methodName, "INFO").Println("获取登录凭证成功")
+		wg.Done()
+	}
+	return
+}
+
+/**
+ * @description:		替换切片不需要的元素为空格
+ * @param {[]byte} data	输入
+ * @return {*}			输出
+ */
+func regByte(data []byte) []byte {
+	for k, v := range data {
+		if v == 10 {
+			data[k] = 32
+		}
+	}
+	return data
+}
+
+/**
+ * @description:		格式化json
+ * @param {[]byte} Data	输入
+ * @return {*}			转化后输出
+ */
+func regJsonData(data []byte) []byte {
+	reg := regexp.MustCompile(`([a-zA-Z]\w*):`)
+	newStr := reg.ReplaceAllString(string(data), `"$1":`)
+	reg = regexp.MustCompile(`<cmd cmd=.*?>.*?</cmd>`)
+	newStr = reg.ReplaceAllString(newStr, ``)
+
+	newStr = strings.Replace(newStr, `\n:`, "", -1)
+	newStr = strings.Replace(newStr, `\r:`, "", -1)
+	newStr = strings.Replace(newStr, `\t:`, "", -1)
+	newStr = strings.Replace(newStr, `'`, `"`, -1)
+	newStr = strings.Replace(newStr, `,0]}`, `]}`, -1)
+	return []byte(newStr)
+}
+
+/**
+ * @description:            获取角色数组
+ * @param {int} server		所在区
+ * @param {string} token	登陆凭证
+ * @return {*}
+ */
+func getRoles(server int, token string) (users []User) {
+	methodName := "获取角色"
+	var header = http.Header{}
+	header.Set("Origin", "http://game.wsmud.com")
+	ws, _, err := websocket.DefaultDialer.Dial(urls[server], header)
+	if err != nil {
+		log4go(methodName, "ERROR").Fatalln(err)
+		return
+	}
+	defer ws.Close()
+	waitcmd(ws, token, 500)
+	// err = ws.WriteMessage(websocket.TextMessage, []byte(token))
+	if err != nil {
+		log4go(methodName, "ERROR").Fatalln(err)
+		return
+	}
+	_, message, err := ws.ReadMessage()
+	if err != nil {
+		log4go(methodName, "ERROR").Fatalln(err)
+		return
+	}
+	roles := struct {
+		Type  string `json:"type"`
+		Roles []struct {
+			Name string `json:"name"`
+			Id   string `json:"id"`
+		}
+	}{}
+	unmarshal_err := json.Unmarshal(regJsonData(message), &roles)
+	if unmarshal_err != nil {
+		log4go(methodName, "ERROR").Fatalln(unmarshal_err)
+	}
+	if roles.Type == "roles" {
+		users = make([]User, len(roles.Roles))
+		for n, role := range roles.Roles {
+			users[n] = User{
+				name:   role.Name,
+				id:     role.Id,
+				token:  token,
+				server: server,
+			}
+		}
+		defer wg.Done()
+	}
+	log4go(methodName, "INFO").Println("获取角色成功")
+	return
+}
+
+/**
+ * @description:                封装发送函数
+ * @param {*websocket.Conn} ws  WS
+ * @param {string} msg          指令
+ * @return {*}
+ */
+func write(ws *websocket.Conn, msg string) {
+	cmds := strings.Split(msg, ",")
+	for _, cmd := range cmds {
+		waitcmd(ws, cmd, rand.Intn(50)+250)
+	}
+}
+
+/**
+ * @description:                等待t毫秒后发送
+ * @param {*websocket.Conn} ws  WS
+ * @param {string} msg          指令
+ * @param {int} t               t毫秒
+ * @return {*}
+ */
+func waitcmd(ws *websocket.Conn, msg string, t int) {
+	if msg == "close" {
+		time.Sleep(time.Millisecond * time.Duration(t))
+		ws.Close()
+		return
+	}
+	cmds := strings.Split(msg, ",")
+	if len(cmds) == 1 {
+		time.Sleep(time.Millisecond * time.Duration(t))
+		err := ws.WriteMessage(websocket.TextMessage, []byte(msg))
+		if err != nil {
+			log4go(msg, "ERROR").Println(err)
+			return
+		}
+	} else {
+		ti := t / len(cmds)
+		for _, cmd := range cmds {
+			waitcmd(ws, cmd, ti)
+		}
+	}
+}
+
+/**
+ * @description: 		日常任务
+ * @param {User} user	角色
+ * @return {*}
+ */
+func daily(user User) {
+	methodName := "日常任务"
+	name := user.name
+	id := user.id
+	token := user.token
+	server := user.server
+	var (
+		family = ""    /* 门派 */
+		isMe   = false /* 首席是否是自己 */
+		qa     = false /* 请安是否完成 */
+		zb     = false /* 追捕是否完成 */
+		sm     = false /* 师门是否完成 */
+		fb     = false /* 副本是否完成 */
+		smover = -1    /* 剩余师门次数 */
+		fbover = -1    /* 剩余副本次数 */
+		zbover = -1    /* 剩余追捕次数 */
+		gotoQa = false /* 开始请安 */
+		gotoZb = false /* 开始追捕 */
+		gotoSm = false /* 开始师门 */
+		gotoFb = false /* 开始副本 */
+		qaNpc  = Npc{} /* 请安NPC */
+		smNpc  = Npc{} /* 师门NPC */
+		buyNpc = Npc{} /* 商人NPC */
+		zbNpc  = Npc{  /* 追捕NPC */
+			id:   "",
+			name: "扬州知府 程药发",
+			way:  "扬州城-衙门正厅",
+			item: "",
+		}
+		room      = ""      /* 房间名字 */
+		roomTimer = Timer{} /* 房间定时器 */
+	)
+	var header = http.Header{}
+	header.Set("Origin", "http://game.wsmud.com")
+	ws, _, err := websocket.DefaultDialer.Dial(urls[server], header)
+	if err != nil {
+		log4go(methodName, "ERROR").Println(err)
+		return
+	}
+	defer ws.Close()
+	waitcmd(ws, token, 500)
+	if err != nil {
+		log4go(methodName, "ERROR").Println(err)
+		return
+	}
+Loop:
+	for {
+		_, message, err := ws.ReadMessage()
+		if err != nil {
+			log4go(methodName, "ERROR").Println(err)
+			break Loop
+		}
+		message = regByte(message)
+		re := regexp.MustCompile(`^{.*}$`)
+		if matched := re.MatchString(string(message)); !matched {
+			message = []byte(`{type:"text",msg:"` + string(message) + `"}`)
+		}
+		if len(string(message)) != 0 {
+			data := struct {
+				Type string `json:"type"`
+			}{}
+			unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+			if unmarshal_err != nil {
+				fmt.Println(string(regJsonData(message)))
+				log4go(methodName, "ERROR").Println(unmarshal_err)
+			}
+			if data.Type == "roles" {
+				write(ws, "login "+id)
+				continue Loop
+			}
+			if data.Type == "login" {
+				log4go(name, "INFO").Println("登陆")
+				write(ws, `setting off_plist 1,setting off_move 1,setting off_move 1`)
+				waitcmd(ws, "score", 500)
+				continue Loop
+			}
+			if data.Type == "room" {
+				data := struct {
+					Type string `json:"type"`
+					Name string `json:"name"`
+				}{}
+				unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+				if unmarshal_err != nil {
+					log4go(methodName, "ERROR").Println(unmarshal_err)
+				}
+				room = data.Name
+				if strings.Contains(room, `副本区域`) {
+					waitcmd(ws, `cr over`, 500)
+					fbover = fbover - 1
+					if fbover <= 0 {
+						fb = true
+						gotoFb = false
+						waitcmd(ws, "tasks", 500)
+					}
+				}
+				if !strings.Contains(room, `副本区域`) && gotoFb && fbover > 0 {
+					waitcmd(ws, `cr yz/lw/shangu`, 500)
+				}
+				roomTimer.clearTimeout()
+				go roomTimer.setTimeout(func() {
+					waitcmd(ws, "tasks", 500)
+				}, 1000*60*2)
+				continue Loop
+			}
+			if data.Type == "loginerror" {
+				data := struct {
+					Type string `json:"type"`
+					Msg  string `json:"msg"`
+				}{}
+				unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+				if unmarshal_err != nil {
+					log4go(methodName, "ERROR").Println(unmarshal_err)
+				}
+				log4go(methodName, "ERROR").Println(data.Msg)
+				ws.Close()
+				break Loop
+			}
+			if data.Type == "text" {
+				data := struct {
+					Type string `json:"type"`
+					Msg  string `json:"msg"`
+				}{}
+				unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+				if unmarshal_err != nil {
+					log4go(methodName, "ERROR").Println(unmarshal_err)
+				}
+				if gotoQa && strings.Contains(data.Msg, `你要看什么`) {
+					qa = true
+					gotoQa = false
+					waitcmd(ws, "tasks", 500)
+				}
+				if gotoSm {
+					if strings.Contains(data.Msg, `帮我找`) {
+						re := regexp.MustCompile(`<.*?>(.*?)</.*?>`)
+						result := re.FindStringSubmatch(data.Msg)[0]
+						for _, buy := range buyNpcS {
+							for _, sale := range buy.sale {
+								if strings.Contains(sale, result) {
+									buyNpc.name = buy.name
+									buyNpc.way = buy.way
+									buyNpc.item = result
+									write(ws, ways[buy.way])
+									continue Loop
+								}
+							}
+						}
+						write(ws, `task sm `+smNpc.id)
+					}
+					if strings.Contains(data.Msg, `师父让别人去找`) || strings.Contains(data.Msg, `你的师门任务完成了`) {
+						write(ws, `task sm `+smNpc.id)
+					}
+					if strings.Contains(data.Msg, `辛苦了， 你先去休息一下吧`) {
+						sm = true
+						gotoSm = false
+						waitcmd(ws, "tasks", 500)
+					}
+					re := regexp.MustCompile(`你的师门任务完成了，目前完成\d+/\d+个`)
+					if re.MatchString(data.Msg) {
+						result := re.FindStringSubmatch(data.Msg)
+						log4go(name, "INFO").Println(result[0])
+					}
+				}
+				if gotoZb {
+					if strings.Contains(data.Msg, `你可以接别的逃犯来继续做`) {
+						write(ws, `ask3 `+zbNpc.id)
+					}
+					if strings.Contains(data.Msg, `你的追捕任务完成了，目前完成20/20个`) {
+						zb = true
+						gotoZb = false
+						waitcmd(ws, "tasks", 500)
+					}
+					if strings.Contains(data.Msg, `你的追捕任务已经完成了`) || strings.Contains(data.Msg, `最近没有在逃的逃犯`) {
+						zb = true
+						gotoZb = false
+						waitcmd(ws, "tasks", 500)
+					}
+					re := regexp.MustCompile(`你的追捕任务完成了，目前完成\d+/\d+个`)
+					if re.MatchString(data.Msg) {
+						result := re.FindStringSubmatch(data.Msg)
+						log4go(name, "INFO").Println(result[0])
+					}
+				}
+				if gotoFb {
+					re := regexp.MustCompile(`完成度`)
+					if re.MatchString(data.Msg) {
+						log4go(name, "INFO").Println(`剩余副本次数: ` + strconv.Itoa(fbover))
+					}
+				}
+				continue Loop
+			}
+			if data.Type == "items" {
+				data := struct {
+					Type  string `json:"type"`
+					Items []struct {
+						P    int64  `json:"p"`
+						Id   string `json:"id"`
+						Name string `json:"name"`
+					}
+				}{}
+				unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+				if unmarshal_err != nil {
+					log4go(methodName, "ERROR").Println(unmarshal_err)
+				}
+				for _, item := range data.Items {
+					if item.P == 1 {
+						continue
+					}
+					if item.Name == "" {
+						continue
+					}
+					if gotoQa {
+						if strings.Contains(item.Name, qaNpc.name) {
+							if strings.Contains(item.Name, name) {
+								isMe = true
+								gotoQa = false
+								waitcmd(ws, "tasks", 500)
+							} else {
+								write(ws, `ask2 `+item.Id+`,look bi`)
+							}
+						}
+					}
+					if gotoSm {
+						if strings.Contains(item.Name, smNpc.name) {
+							smNpc.id = item.Id
+							write(ws, `task sm `+smNpc.id)
+						}
+						if strings.Contains(item.Name, buyNpc.name) {
+							buyNpc.id = item.Id
+							write(ws, `sell all,list `+buyNpc.id)
+						}
+					}
+					if gotoZb {
+						if strings.Contains(item.Name, zbNpc.name) {
+							zbNpc.id = item.Id
+							write(ws, `ask1 `+zbNpc.id+`,ask2 `+zbNpc.id)
+						}
+					}
+				}
+				continue Loop
+			}
+			if data.Type == "cmds" {
+				if gotoSm {
+					var giveup = ""
+					data := struct {
+						Type  string `json:"type"`
+						Items []struct {
+							Name string `json:"name"`
+							Cmd  string `json:"cmd"`
+						}
+					}{}
+					unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+					if unmarshal_err != nil {
+						log4go(methodName, "ERROR").Println(unmarshal_err)
+					}
+					for _, item := range data.Items {
+						if strings.Contains(item.Name, "放弃") {
+							giveup = item.Cmd
+						}
+						if item.Name == `上交`+buyNpc.item {
+							write(ws, item.Cmd)
+							continue Loop
+						}
+					}
+					write(ws, giveup)
+				}
+				continue Loop
+			}
+			if data.Type == "dialog" {
+				data := struct {
+					Type   string `json:"type"`
+					Dialog string `json:"dialog"`
+				}{}
+				unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+				if unmarshal_err != nil {
+					log4go(methodName, "ERROR").Println(unmarshal_err)
+				}
+				switch data.Dialog {
+				case "tasks":
+					data := struct {
+						Items []struct {
+							Id    string `json:"id"`
+							Desc  string `json:"desc"`
+							State int    `json:"state"`
+						}
+					}{}
+					unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+					if unmarshal_err != nil {
+						log4go(methodName, "ERROR").Println(unmarshal_err)
+					}
+					if len(data.Items) != 0 {
+						for _, item := range data.Items {
+							if item.State == 2 {
+								write(ws, `taskover `+item.Id)
+							}
+							switch item.Id {
+							case "signin":
+								if isMe {
+									qa = true
+								} else {
+									if strings.Contains(item.Desc, "还没有给首席请安") {
+										qa = false
+									} else {
+										qa = true
+									}
+								}
+								if item.State == 3 {
+									sm = true
+									fb = true
+								}
+								re := regexp.MustCompile(`今日副本完成次数：(\d+)`)
+								result := re.FindStringSubmatch(item.Desc)
+								s, _ := strconv.Atoi(result[1])
+								fbover = 20 - s
+								if fbover <= 0 {
+									fbover = 0
+									fb = true
+								} else {
+									fb = false
+								}
+							case "sm":
+								if item.State == 3 {
+									sm = true
+								}
+								re := regexp.MustCompile(`完成(\d+)/(\d+)`)
+								result := re.FindStringSubmatch(item.Desc)
+								s1, _ := strconv.Atoi(result[1])
+								s2, _ := strconv.Atoi(result[2])
+								smover = s2 - s1
+							case "yamen":
+								if item.State == 3 {
+									zb = true
+								}
+								re := regexp.MustCompile(`完成(\d+)/(\d+)个，共连续完成(\d+)`)
+								result := re.FindStringSubmatch(item.Desc)
+								s1, _ := strconv.Atoi(result[1])
+								s2, _ := strconv.Atoi(result[2])
+								zbover = s2 - s1
+							}
+						}
+						log4go(name, "INFO").Println(`请安完成情况: ` + strconv.FormatBool(qa))
+						log4go(name, "INFO").Println(`师门完成情况: ` + strconv.FormatBool(sm) + `,剩余次数: ` + strconv.FormatInt(int64(smover), 10))
+						log4go(name, "INFO").Println(`副本完成情况: ` + strconv.FormatBool(fb) + `,剩余次数: ` + strconv.FormatInt(int64(fbover), 10))
+						log4go(name, "INFO").Println(`追捕完成情况: ` + strconv.FormatBool(zb) + `,剩余次数: ` + strconv.FormatInt(int64(zbover), 10))
+						write(ws, `stopstate`)
+						if !qa {
+							log4go(name, "INFO").Println(`开始请安`)
+							gotoQa = true
+							if strings.HasPrefix(qaNpc.way, "-") {
+								write(ws, strings.Replace(qaNpc.way, `-`, ``, -1))
+							} else {
+								write(ws, ways[qaNpc.way])
+							}
+						} else if !sm {
+							log4go(name, "INFO").Println(`开始师门`)
+							gotoSm = true
+							if strings.HasPrefix(smNpc.way, "-") {
+								write(ws, strings.Replace(smNpc.way, `-`, ``, -1))
+							} else {
+								write(ws, ways[smNpc.way])
+							}
+						} else if !fb {
+							log4go(name, "INFO").Println(`开始副本`)
+							gotoFb = true
+							write(ws, `jh fam 0 start`)
+						} else if !zb {
+							log4go(name, "INFO").Println(`开始追捕`)
+							gotoZb = true
+							write(ws, `shop 0 50,`+ways[zbNpc.way])
+						} else {
+							write(ws, `tm 开始挖矿,wakuang`)
+							waitcmd(ws, "close", 2000)
+							roomTimer.clearTimeout()
+							break Loop
+						}
+					}
+				case "score":
+					data := struct {
+						Family string `json:"family"`
+					}{}
+					unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+					if unmarshal_err != nil {
+						log4go(methodName, "ERROR").Println(unmarshal_err)
+					}
+					family = data.Family
+					if family == "无门无派" {
+						family = "武馆"
+					}
+					qaNpc = qaNpcs[family]
+					smNpc = smNpcs[family]
+					waitcmd(ws, "tasks", 500)
+				case "list":
+					if gotoSm {
+						data := struct {
+							List []struct {
+								Id   string `json:"id"`
+								Name string `json:"name"`
+							} `json:"selllist"`
+						}{}
+						unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+						if unmarshal_err != nil {
+							log4go(methodName, "ERROR").Println(unmarshal_err)
+						}
+						for _, item := range data.List {
+							if strings.Contains(item.Name, buyNpc.item) {
+								write(ws, `buy 1 `+item.Id+` from `+buyNpc.id+`,`+ways[smNpc.way])
+							}
+						}
+					}
+				}
+				continue Loop
+			}
+		}
+	}
+}
+
+/**
+ * @description:                线程
+ * @param {int} id              序号
+ * @param {<-chanUser} jobs     任务
+ * @param {chan<-User} result   结果
+ * @return {*}
+ */
+func worker(id int, jobs <-chan User, result chan<- User) {
+	for job := range jobs {
+		daily(job)
+		result <- job
+	}
+}
+
+/**
+ * @description: 主函数
+ * @param {*}
+ * @return {*}
+ */
+func main() {
+	iniConf()
+	cr := cron.New()
+	cr.AddFunc(conf.Cron, func() {
+		log4go("定时任务", "INFO").Println(`开启所有日常任务`)
+		wg.Add(1)
+		urls = getWsUrl()
+		wg.Wait()
+		users = []User{}
+		for _, login := range conf.Logins {
+			wg.Add(1)
+			token := getToken(login.Login, login.Password)
+			wg.Wait()
+			wg.Add(1)
+			users = append(users, getRoles(login.Server, token)...)
+		}
+		wg.Wait()
+		jobs := make(chan User, 100)
+		result := make(chan User, 100)
+		for i := 0; i < 30; i++ {
+			go worker(1, jobs, result)
+		}
+		for _, user := range users {
+			jobs <- user
+		}
+		close(jobs)
+		for range users {
+			u := <-result
+			log4go(u.name, "INFO").Println(`日常任务完成`)
+		}
+		log4go("定时任务", "INFO").Println(`结束所有日常任务`)
+	})
+	cr.Start()
+	select {}
+}

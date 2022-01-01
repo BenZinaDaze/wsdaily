@@ -1,0 +1,8 @@
+cron: 0 30 6,14,22 * * *
+logins:
+    - login: xxxxx
+      password: xxxxx
+      server: 1
+    - login: yyyyy
+      password: yyyyy
+      server: 2
