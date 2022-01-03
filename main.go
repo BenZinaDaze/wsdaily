@@ -2,7 +2,7 @@
  * @Description: 武神活跃号日常
  * @Author: benz1
  * @Date: 2021-12-29 16:10:57
- * @LastEditTime: 2022-01-02 01:12:48
+ * @LastEditTime: 2022-01-03 12:39:42
  * @LastEditors: benz1
  * @Reference:
  */
@@ -50,33 +50,6 @@ var (
 	users []User
 	conf  Conf
 )
-
-type Timer struct {
-	timer *time.Timer
-}
-
-/**
-* @description:		计时器
-* @param {func} f 	执行的操作
-* @param {int}	t	定时 单位ms
-* @return {*}
- */
-func (T *Timer) setTimeout(f func(), t int) {
-	T.timer = time.NewTimer(time.Millisecond * time.Duration(t))
-	<-T.timer.C
-	go f()
-}
-
-/**
- * @description:	清楚定时器
- * @param {*}
- * @return {*}
- */
-func (T *Timer) clearTimeout() {
-	if T.timer != nil {
-		T.timer.Stop()
-	}
-}
 
 /**
  * @description:	初始化配置
@@ -367,8 +340,8 @@ func daily(user User) {
 			way:  "扬州城-衙门正厅",
 			item: "",
 		}
-		room      = ""      /* 房间名字 */
-		roomTimer = Timer{} /* 房间定时器 */
+		room      = "" /* 房间名字 */
+		roomTimer = time.NewTimer(time.Second * time.Duration(120))
 	)
 	var header = http.Header{}
 	header.Set("Origin", "http://game.wsmud.com")
@@ -429,17 +402,25 @@ Loop:
 					fbover = fbover - 1
 					if fbover <= 0 {
 						fb = true
-						gotoFb = false
 						waitcmd(ws, "tasks", 500)
 					}
 				}
 				if !strings.Contains(room, `副本区域`) && gotoFb && fbover > 0 {
 					waitcmd(ws, `cr yz/lw/shangu`, 500)
 				}
-				roomTimer.clearTimeout()
-				go roomTimer.setTimeout(func() {
+				select {
+				case <-roomTimer.C:
+					fmt.Println(111111)
 					waitcmd(ws, "tasks", 500)
-				}, 1000*60*2)
+				default:
+				}
+				if !roomTimer.Stop() {
+					select {
+					case <-roomTimer.C:
+					default:
+					}
+				}
+				roomTimer.Reset(time.Second * time.Duration(120))
 				continue Loop
 			}
 			if data.Type == "loginerror" {
@@ -524,6 +505,10 @@ Loop:
 					re := regexp.MustCompile(`完成度`)
 					if re.MatchString(data.Msg) {
 						log4go(name, "INFO").Println(`剩余副本次数: ` + strconv.Itoa(fbover))
+						if fbover <= 0 {
+							fb = true
+							gotoFb = false
+						}
 					}
 				}
 				continue Loop
@@ -637,7 +622,7 @@ Loop:
 								if isMe {
 									qa = true
 								} else {
-									if strings.Contains(item.Desc, "还没有给首席请安") {
+									if strings.Contains(item.Desc, "还没有给首席请安") && family != "武馆" {
 										qa = false
 									} else {
 										qa = true
@@ -709,7 +694,6 @@ Loop:
 						} else {
 							write(ws, `tm 开始挖矿,wakuang`)
 							waitcmd(ws, "close", 2000)
-							roomTimer.clearTimeout()
 							break Loop
 						}
 					}
