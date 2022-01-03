@@ -2,7 +2,7 @@
  * @Description: 武神活跃号日常
  * @Author: benz1
  * @Date: 2021-12-29 16:10:57
- * @LastEditTime: 2022-01-03 12:39:42
+ * @LastEditTime: 2022-01-03 13:43:11
  * @LastEditors: benz1
  * @Reference:
  */
@@ -358,6 +358,11 @@ func daily(user User) {
 	}
 Loop:
 	for {
+		select {
+		case <-roomTimer.C:
+			waitcmd(ws, "tasks", 500)
+		default:
+		}
 		_, message, err := ws.ReadMessage()
 		if err != nil {
 			log4go(methodName, "ERROR").Println(err)
@@ -407,12 +412,6 @@ Loop:
 				}
 				if !strings.Contains(room, `副本区域`) && gotoFb && fbover > 0 {
 					waitcmd(ws, `cr yz/lw/shangu`, 500)
-				}
-				select {
-				case <-roomTimer.C:
-					fmt.Println(111111)
-					waitcmd(ws, "tasks", 500)
-				default:
 				}
 				if !roomTimer.Stop() {
 					select {
