@@ -7,6 +7,9 @@
 - 结束自动挖矿
 - 支持定时、多账号
 
+### 使用方法
+    去[releases](https://github.com/BenZinaDaze/wsdaily/releases)下载最新编译好的程序,修改配置文件,开箱即用。
+
 ### 配置
 
     ./conf.yaml
@@ -19,7 +22,7 @@
          password 密码2
          server 区 1 2 3 4 99 100
 
-### 编译
+### 自行编译
 
 #### Linux
     示例:
