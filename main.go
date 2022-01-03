@@ -2,7 +2,7 @@
  * @Description: 武神活跃号日常
  * @Author: benz1
  * @Date: 2021-12-29 16:10:57
- * @LastEditTime: 2022-01-03 13:43:11
+ * @LastEditTime: 2022-01-03 17:17:42
  * @LastEditors: benz1
  * @Reference:
  */
@@ -11,6 +11,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -49,6 +50,7 @@ var (
 	urls  = make(map[int]string) /* WS地址 */
 	users []User
 	conf  Conf
+	mode  string /* 运行模式 */
 )
 
 /**
@@ -751,42 +753,57 @@ func worker(id int, jobs <-chan User, result chan<- User) {
 }
 
 /**
+ * @description:	主任务
+ * @param {*}
+ * @return {*}
+ */
+func task() {
+	log4go("定时任务", "INFO").Println(`开启所有日常任务`)
+	wg.Add(1)
+	urls = getWsUrl()
+	wg.Wait()
+	users = []User{}
+	for _, login := range conf.Logins {
+		wg.Add(1)
+		token := getToken(login.Login, login.Password)
+		wg.Wait()
+		wg.Add(1)
+		users = append(users, getRoles(login.Server, token)...)
+	}
+	wg.Wait()
+	jobs := make(chan User, 100)
+	result := make(chan User, 100)
+	for i := 0; i < 30; i++ {
+		go worker(1, jobs, result)
+	}
+	for _, user := range users {
+		jobs <- user
+	}
+	close(jobs)
+	for range users {
+		u := <-result
+		log4go(u.name, "INFO").Println(`日常任务完成`)
+	}
+	log4go("定时任务", "INFO").Println(`结束所有日常任务`)
+}
+
+/**
  * @description: 主函数
  * @param {*}
  * @return {*}
  */
 func main() {
 	iniConf()
-	cr := cron.New()
-	cr.AddFunc(conf.Cron, func() {
-		log4go("定时任务", "INFO").Println(`开启所有日常任务`)
-		wg.Add(1)
-		urls = getWsUrl()
-		wg.Wait()
-		users = []User{}
-		for _, login := range conf.Logins {
-			wg.Add(1)
-			token := getToken(login.Login, login.Password)
-			wg.Wait()
-			wg.Add(1)
-			users = append(users, getRoles(login.Server, token)...)
-		}
-		wg.Wait()
-		jobs := make(chan User, 100)
-		result := make(chan User, 100)
-		for i := 0; i < 30; i++ {
-			go worker(1, jobs, result)
-		}
-		for _, user := range users {
-			jobs <- user
-		}
-		close(jobs)
-		for range users {
-			u := <-result
-			log4go(u.name, "INFO").Println(`日常任务完成`)
-		}
-		log4go("定时任务", "INFO").Println(`结束所有日常任务`)
-	})
-	cr.Start()
-	select {}
+	flag.StringVar(&mode, "mode", "cron", "运行模式")
+	flag.Parse()
+	if mode == "cron" {
+		cr := cron.New()
+		cr.AddFunc(conf.Cron, task)
+		cr.Start()
+		select {}
+	} else if mode == "run" {
+		task()
+	} else {
+		log4go("参数错误", "ERROR").Println(`MODE参数设置错误`)
+	}
 }

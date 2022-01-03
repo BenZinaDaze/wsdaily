@@ -23,7 +23,7 @@ LINUX= ${shell \
 @:
 	@echo "请输入参数"
 run:
-	@go run ./
+	@go run ./ --mode run
 build:
 	@CGO_ENABLED=0 GOOS=${os} GOARCH=${arch} go build -ldflags="-s -w" -o ${NAME}
 zip:

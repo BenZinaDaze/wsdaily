@@ -9,7 +9,12 @@
 
 ### 使用方法
 
-去 [releases](https://github.com/BenZinaDaze/wsdaily/releases) 下载最新编译好的程序,修改配置文件,开箱即用。
+去 [releases](https://github.com/BenZinaDaze/wsdaily/releases) 下载最新编译好的程序,修改配置文件。
+
+    1. 定时启动
+        ./wsrc
+    2. 立即运行一次
+        ./wsrc --mode run
 
 ### 配置
 
@@ -17,7 +22,7 @@
 
     # Crontab 定时
     cron: 0 30 6,14,22 * * *
-    # 多账号,注意缩进
+    # 多账号,注意缩进,不需要单双引号. 区 1 2 3 4 测试为99
     logins:
         - login: xxxxx
         password: xxxxx
