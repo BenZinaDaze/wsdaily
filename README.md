@@ -25,11 +25,11 @@
     # 多账号,注意缩进,不需要单双引号. 区 1 2 3 4 测试为99
     logins:
         - login: xxxxx
-        password: xxxxx
-        server: 1
-        - login: yyyyy
-        password: yyyyy
-        server: 2
+          password: xxxxxx
+          server: 1
+        - login: xxxxx
+          password: xxxxx
+          server: 2
 
 ### 自行编译
 
