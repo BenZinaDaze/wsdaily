@@ -2,7 +2,7 @@
  * @Description: 武神活跃号日常
  * @Author: benz1
  * @Date: 2021-12-29 16:10:57
- * @LastEditTime: 2022-01-03 17:17:42
+ * @LastEditTime: 2022-01-04 14:30:27
  * @LastEditors: benz1
  * @Reference:
  */
@@ -37,8 +37,11 @@ type User struct {
 }
 
 type Conf struct {
-	Cron   string `yaml:"cron"`
-	Logins []struct {
+	Cron           string `yaml:"cron"`
+	Pushplus_token string `yaml:"pushplus_token"`
+	Pushtg_token   string `yaml:"pushtg_token"`
+	Pushtg_chat_id string `yaml:"pushtg_chat_id"`
+	Logins         []struct {
 		Login    string `yaml:"login"`
 		Password string `yaml:"password"`
 		Server   int    `yaml:"server"`
@@ -51,7 +54,87 @@ var (
 	users []User
 	conf  Conf
 	mode  string /* 运行模式 */
+	text  = ""   /* 推送消息 */
+	lose  int    /* 失败个数 */
+	succ  int    /* 成功个数 */
 )
+
+/**
+ * @description:			通过pushplus推送
+ * @param {string} token	token
+ * @param {string} msg		推送信息
+ * @return {*}
+ */
+func pushPlusNotify(token string, msg string) {
+	methodName := "PUSHPLUS推送任务"
+	url := "http://www.pushplus.plus/send"
+	contentType := "application/json"
+	data := `{"token":"` + token + `","template":"txt","title":"🔰活跃号日常推送 ","content":"` + msg + `"}`
+	resp, err := http.Post(url, contentType, strings.NewReader(data))
+	if err != nil {
+		log4go(methodName, "ERROR").Println(err)
+		return
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log4go(methodName, "ERROR").Println(err)
+		return
+	}
+	message := struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+		Data string `json:"data"`
+	}{}
+	unmarshal_err := json.Unmarshal(body, &message)
+	if unmarshal_err != nil {
+		log4go(methodName, "ERROR").Fatalln(unmarshal_err)
+	}
+	if message.Code == 999 {
+		log4go(methodName, "ERROR").Fatalln(message.Msg)
+	} else if message.Code == 200 {
+		log4go(methodName, "INFO").Fatalln(message.Msg)
+	}
+}
+
+/**
+ * @description:			通过TG推送
+ * @param {string} token	API Token
+ * @param {string} chat_id	User id
+ * @param {string} msg		推送消息
+ * @return {*}
+ */
+func pushtgNotify(token string, chat_id string, msg string) {
+	methodName := "TG推送任务"
+	url := "https://api.telegram.org/bot" + token + "/sendMessage"
+	contentType := "application/json"
+	data := `{"chat_id":"` + chat_id + `","parse_mode":"Markdown","text":"` + "🔰*活跃号日常推送* \n" + msg + `"}`
+	resp, err := http.Post(url, contentType, strings.NewReader(data))
+	if err != nil {
+		log4go(methodName, "ERROR").Println(err)
+		return
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log4go(methodName, "ERROR").Println(err)
+		return
+	}
+	message := struct {
+		OK          bool   `json:"ok"`
+		ErrorCode   int    `json:"error_code"`
+		Description string `json:"description"`
+	}{}
+	unmarshal_err := json.Unmarshal(body, &message)
+	if unmarshal_err != nil {
+		log4go(methodName, "ERROR").Fatalln(unmarshal_err)
+	}
+	if !message.OK {
+		log4go(methodName, "ERROR").Fatalln(message.Description)
+	} else if message.OK {
+		log4go(methodName, "INFO").Fatalln(message.Description)
+	}
+}
 
 /**
  * @description:	检查文件是否存在
@@ -78,11 +161,10 @@ func newConf() {
 
 	var conf = []byte("cron: 0 30 6,14,22 * * *\nlogins:\n    - login: xxxxx\n      password: xxxxx\n      server: 1\n    - login: yyyyy\n      password: yyyyy\n      server: 2\n")
 
-	err := ioutil.WriteFile("./conf.yaml", conf, 666)
+	err := ioutil.WriteFile("./conf.yaml", conf, 0666)
 	if err != nil {
 		return
 	}
-	return
 }
 
 /**
@@ -465,7 +547,9 @@ Loop:
 				if unmarshal_err != nil {
 					log4go(methodName, "ERROR").Println(unmarshal_err)
 				}
-				log4go(methodName, "ERROR").Println(data.Msg)
+				log4go(name, "ERROR").Println(data.Msg)
+				text = text + name + " : " + data.Msg + `\n`
+				lose = lose + 1
 				ws.Close()
 				break Loop
 			}
@@ -725,6 +809,7 @@ Loop:
 							gotoZb = true
 							write(ws, `shop 0 50,`+ways[zbNpc.way])
 						} else {
+							succ = succ + 1
 							write(ws, `tm 开始挖矿,wakuang`)
 							waitcmd(ws, "close", 2000)
 							break Loop
@@ -791,6 +876,9 @@ func worker(id int, jobs <-chan User, result chan<- User) {
  */
 func task() {
 	log4go("定时任务", "INFO").Println(`开启所有日常任务`)
+	text = ""
+	lose = 0
+	succ = 0
 	wg.Add(1)
 	urls = getWsUrl()
 	wg.Wait()
@@ -801,8 +889,8 @@ func task() {
 		wg.Wait()
 		wg.Add(1)
 		users = append(users, getRoles(login.Server, token)...)
+		wg.Wait()
 	}
-	wg.Wait()
 	jobs := make(chan User, 100)
 	result := make(chan User, 100)
 	for i := 0; i < 30; i++ {
@@ -816,7 +904,15 @@ func task() {
 		u := <-result
 		log4go(u.name, "INFO").Println(`日常任务完成`)
 	}
+	text = text + `完成:` + strconv.Itoa(succ) + `个,失败:` + strconv.Itoa(lose) + `个,未知:` + strconv.Itoa(len(users)-lose-succ) + `个。\n`
+	text = text + `*结束所有日常任务*\n`
 	log4go("定时任务", "INFO").Println(`结束所有日常任务`)
+	if conf.Pushplus_token != "" {
+		pushPlusNotify(conf.Pushplus_token, text)
+	}
+	if conf.Pushtg_token != "" && conf.Pushtg_chat_id != "" {
+		pushtgNotify(conf.Pushtg_token, conf.Pushtg_chat_id, text)
+	}
 }
 
 /**

@@ -1,8 +1,16 @@
+# Crontab 定时
 cron: 0 30 6,14,22 * * *
+# 多账号,注意缩进,不需要单双引号. 区 1 2 3 4 测试为99
+# pushplus推送 http://www.pushplus.plus/ 获取  (非必需,但请不要乱填)
+pushplus_token: 
+# api token 通过 BotFather 获取  (非必需,但请不要乱填)
+pushtg_token: 
+# 用户id 通过 IDBot 获取  (非必需,但请不要乱填)
+pushtg_chat_id: 
 logins:
     - login: xxxxx
-      password: xxxxx
+      password: xxxxxx
       server: 1
-    - login: yyyyy
-      password: yyyyy
+    - login: xxxxx
+      password: xxxxx
       server: 2

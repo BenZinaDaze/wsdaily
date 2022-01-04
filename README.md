@@ -6,6 +6,7 @@
 - 领取签到奖励、节日奖励  
 - 结束自动挖矿
 - 支持定时、多账号
+- 支持TG,PUSHPLUS推送
 
 ### 使用方法
 
@@ -23,6 +24,12 @@
     # Crontab 定时
     cron: 0 30 6,14,22 * * *
     # 多账号,注意缩进,不需要单双引号. 区 1 2 3 4 测试为99
+    # pushplus推送 http://www.pushplus.plus/ 获取  (非必需,但请不要乱填)
+    pushplus_token: xxxxxxx
+    # api token 通过 BotFather 获取  (非必需,但请不要乱填)
+    pushtg_token: xxxxx
+    # 用户id 通过 IDBot 获取  (非必需,但请不要乱填)
+    pushtg_chat_id: xxxxxx
     logins:
         - login: xxxxx
           password: xxxxxx
@@ -35,8 +42,8 @@
 
 #### Linux
 
-    1. 安装go，自行编译.
-    2. 使用make编译
+    方法1. 安装go,自行编译.
+    方法2. 安装go,使用make编译
         示例:
             make build os=windows arch=amd64
         参数:
