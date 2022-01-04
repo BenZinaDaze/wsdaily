@@ -2,7 +2,7 @@
  * @Description: 武神活跃号日常
  * @Author: benz1
  * @Date: 2021-12-29 16:10:57
- * @LastEditTime: 2022-01-04 14:30:27
+ * @LastEditTime: 2022-01-04 14:42:43
  * @LastEditors: benz1
  * @Reference:
  */
@@ -88,12 +88,12 @@ func pushPlusNotify(token string, msg string) {
 	}{}
 	unmarshal_err := json.Unmarshal(body, &message)
 	if unmarshal_err != nil {
-		log4go(methodName, "ERROR").Fatalln(unmarshal_err)
+		log4go(methodName, "ERROR").Println(unmarshal_err)
 	}
 	if message.Code == 999 {
-		log4go(methodName, "ERROR").Fatalln(message.Msg)
+		log4go(methodName, "ERROR").Println(message.Msg)
 	} else if message.Code == 200 {
-		log4go(methodName, "INFO").Fatalln(message.Msg)
+		log4go(methodName, "INFO").Println(message.Msg)
 	}
 }
 
@@ -127,12 +127,12 @@ func pushtgNotify(token string, chat_id string, msg string) {
 	}{}
 	unmarshal_err := json.Unmarshal(body, &message)
 	if unmarshal_err != nil {
-		log4go(methodName, "ERROR").Fatalln(unmarshal_err)
+		log4go(methodName, "ERROR").Println(unmarshal_err)
 	}
 	if !message.OK {
-		log4go(methodName, "ERROR").Fatalln(message.Description)
+		log4go(methodName, "ERROR").Println(message.Description)
 	} else if message.OK {
-		log4go(methodName, "INFO").Fatalln(message.Description)
+		log4go(methodName, "INFO").Println(message.Description)
 	}
 }
 
@@ -905,14 +905,14 @@ func task() {
 		log4go(u.name, "INFO").Println(`日常任务完成`)
 	}
 	text = text + `完成:` + strconv.Itoa(succ) + `个,失败:` + strconv.Itoa(lose) + `个,未知:` + strconv.Itoa(len(users)-lose-succ) + `个。\n`
-	text = text + `*结束所有日常任务*\n`
-	log4go("定时任务", "INFO").Println(`结束所有日常任务`)
+	text = text + `*结束所有日常任务2*\n`
 	if conf.Pushplus_token != "" {
 		pushPlusNotify(conf.Pushplus_token, text)
 	}
 	if conf.Pushtg_token != "" && conf.Pushtg_chat_id != "" {
 		pushtgNotify(conf.Pushtg_token, conf.Pushtg_chat_id, text)
 	}
+	log4go("定时任务", "INFO").Println(`结束所有日常任务2`)
 }
 
 /**
