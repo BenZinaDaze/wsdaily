@@ -54,6 +54,38 @@ var (
 )
 
 /**
+ * @description:	检查文件是否存在
+ * @param {string} filename 文件名
+ * @return {bool} 是否存在
+ */
+func checkFileIsExist(filename string) bool {
+	var exist = true
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		exist = false
+	}
+	return exist
+}
+
+/**
+ * @description:	生成配置
+ * @param {*}
+ * @return {*}
+ */
+func newConf() {
+	if checkFileIsExist("./conf.yaml") {
+		return
+	}
+
+	var conf = []byte("cron: 0 30 6,14,22 * * *\nlogins:\n    - login: xxxxx\n      password: xxxxx\n      server: 1\n    - login: yyyyy\n      password: yyyyy\n      server: 2\n")
+
+	err := ioutil.WriteFile("./conf.yaml", conf, 666)
+	if err != nil {
+		return
+	}
+	return
+}
+
+/**
  * @description:	初始化配置
  * @param {*}
  * @return {*}
@@ -793,6 +825,13 @@ func task() {
  * @return {*}
  */
 func main() {
+
+	if !checkFileIsExist("./conf.yaml") {
+		newConf()
+		log4go("配置文件不存在", "ERROR").Println(`已生成配置文件,请按规则配置参数,配置完成后重启应用.`)
+		return
+	}
+
 	iniConf()
 	flag.StringVar(&mode, "mode", "cron", "运行模式")
 	flag.Parse()
