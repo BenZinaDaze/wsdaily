@@ -13,9 +13,9 @@
 去 [releases](https://github.com/BenZinaDaze/wsdaily/releases) 下载最新编译好的程序,修改配置文件。
 
     1. 定时启动
-        ./wsrc
+        ./wsdaily
     2. 立即运行一次
-        ./wsrc --mode run
+        ./wsdaily --mode run
 
 ### 配置
 

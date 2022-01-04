@@ -2,7 +2,7 @@
  * @Description: 武神活跃号日常
  * @Author: benz1
  * @Date: 2021-12-29 16:10:57
- * @LastEditTime: 2022-01-04 14:42:43
+ * @LastEditTime: 2022-01-04 19:12:55
  * @LastEditors: benz1
  * @Reference:
  */
@@ -34,6 +34,7 @@ type User struct {
 	id     string /* id */
 	token  string /* 登录凭证 */
 	server int    /* 区 */
+	login  string /* 所在账号 */
 }
 
 type Conf struct {
@@ -49,14 +50,16 @@ type Conf struct {
 }
 
 var (
-	wg    sync.WaitGroup
-	urls  = make(map[int]string) /* WS地址 */
-	users []User
-	conf  Conf
-	mode  string /* 运行模式 */
-	text  = ""   /* 推送消息 */
-	lose  int    /* 失败个数 */
-	succ  int    /* 成功个数 */
+	wg       sync.WaitGroup
+	urls     = make(map[int]string) /* WS地址 */
+	users    []User
+	conf     Conf
+	mode     string     /* 运行模式 */
+	text     = ""       /* 推送消息 */
+	lose     int        /* 失败个数 */
+	succ     int        /* 成功个数 */
+	loselock sync.Mutex /* 失败锁 */
+	succlock sync.Mutex /* 成功锁 */
 )
 
 /**
@@ -332,7 +335,7 @@ func regJsonData(data []byte) []byte {
  * @param {string} token	登陆凭证
  * @return {*}
  */
-func getRoles(server int, token string) (users []User) {
+func getRoles(server int, token string, login string) (users []User) {
 	methodName := "获取角色"
 	var header = http.Header{}
 	header.Set("Origin", "http://game.wsmud.com")
@@ -372,6 +375,7 @@ func getRoles(server int, token string) (users []User) {
 				id:     role.Id,
 				token:  token,
 				server: server,
+				login:  login,
 			}
 		}
 		defer wg.Done()
@@ -435,6 +439,7 @@ func daily(user User) {
 	server := user.server
 	var (
 		family = ""    /* 门派 */
+		level  = ""    /* 等级 */
 		isMe   = false /* 首席是否是自己 */
 		qa     = false /* 请安是否完成 */
 		zb     = false /* 追捕是否完成 */
@@ -548,8 +553,10 @@ Loop:
 					log4go(methodName, "ERROR").Println(unmarshal_err)
 				}
 				log4go(name, "ERROR").Println(data.Msg)
-				text = text + name + " : " + data.Msg + `\n`
+				loselock.Lock()
+				text = text + name + " : " + data.Msg + `, 所在账号 ` + user.login + `\n`
 				lose = lose + 1
+				loselock.Unlock()
 				ws.Close()
 				break Loop
 			}
@@ -809,8 +816,15 @@ Loop:
 							gotoZb = true
 							write(ws, `shop 0 50,`+ways[zbNpc.way])
 						} else {
+							succlock.Lock()
 							succ = succ + 1
-							write(ws, `tm 开始挖矿,wakuang`)
+							succlock.Unlock()
+							log4go(name, "INFO").Println(`日常任务完成`)
+							if strings.Contains(level, "武帝") || strings.Contains(level, "武神") {
+								write(ws, `tm 回家自闭,jh fam 0 start,go west,go west,go north,go enter,go west,xiulian`)
+							} else {
+								write(ws, `tm 开始挖矿,wakuang`)
+							}
 							waitcmd(ws, "close", 2000)
 							break Loop
 						}
@@ -818,12 +832,14 @@ Loop:
 				case "score":
 					data := struct {
 						Family string `json:"family"`
+						Level  string `json:"level"`
 					}{}
 					unmarshal_err := json.Unmarshal(regJsonData(message), &data)
 					if unmarshal_err != nil {
 						log4go(methodName, "ERROR").Println(unmarshal_err)
 					}
 					family = data.Family
+					level = data.Level
 					if family == "无门无派" {
 						family = "武馆"
 					}
@@ -888,11 +904,11 @@ func task() {
 		token := getToken(login.Login, login.Password)
 		wg.Wait()
 		wg.Add(1)
-		users = append(users, getRoles(login.Server, token)...)
+		users = append(users, getRoles(login.Server, token, login.Login)...)
 		wg.Wait()
 	}
-	jobs := make(chan User, 100)
-	result := make(chan User, 100)
+	jobs := make(chan User, 10086)
+	result := make(chan User, 10086)
 	for i := 0; i < 30; i++ {
 		go worker(1, jobs, result)
 	}
@@ -901,18 +917,17 @@ func task() {
 	}
 	close(jobs)
 	for range users {
-		u := <-result
-		log4go(u.name, "INFO").Println(`日常任务完成`)
+		<-result
 	}
 	text = text + `完成:` + strconv.Itoa(succ) + `个,失败:` + strconv.Itoa(lose) + `个,未知:` + strconv.Itoa(len(users)-lose-succ) + `个。\n`
-	text = text + `*结束所有日常任务2*\n`
+	text = text + `*结束所有日常任务*\n`
 	if conf.Pushplus_token != "" {
 		pushPlusNotify(conf.Pushplus_token, text)
 	}
 	if conf.Pushtg_token != "" && conf.Pushtg_chat_id != "" {
 		pushtgNotify(conf.Pushtg_token, conf.Pushtg_chat_id, text)
 	}
-	log4go("定时任务", "INFO").Println(`结束所有日常任务2`)
+	log4go("定时任务", "INFO").Println(`结束所有日常任务`)
 }
 
 /**
