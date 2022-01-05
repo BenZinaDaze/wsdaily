@@ -7,6 +7,8 @@ pushplus_token:
 pushtg_token: 
 # 用户id 通过 IDBot 获取  (非必需,但请不要乱填)
 pushtg_chat_id: 
+# 黑名单 在名单内跳过日常,英文逗号分隔
+blacklist: 张三,李四
 logins:
     - login: xxxxx
       password: xxxxxx

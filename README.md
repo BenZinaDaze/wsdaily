@@ -1,3 +1,11 @@
+<!--
+ * @Description: 
+ * @Author: benz1
+ * @Date: 2022-01-04 09:11:11
+ * @LastEditTime: 2022-01-05 15:28:39
+ * @LastEditors: benz1
+ * @Reference: 
+-->
 ## Go 版本武神活跃号日常
 
 - 自动师门
@@ -30,6 +38,8 @@
     pushtg_token: xxxxx
     # 用户id 通过 IDBot 获取  (非必需,但请不要乱填)
     pushtg_chat_id: xxxxxx
+    # 黑名单 在名单内跳过日常,英文逗号分隔
+    blacklist: 张三,李四
     logins:
         - login: xxxxx
           password: xxxxxx

@@ -2,7 +2,7 @@
  * @Description: 武神活跃号日常
  * @Author: benz1
  * @Date: 2021-12-29 16:10:57
- * @LastEditTime: 2022-01-04 19:12:55
+ * @LastEditTime: 2022-01-05 15:25:03
  * @LastEditors: benz1
  * @Reference:
  */
@@ -35,6 +35,7 @@ type User struct {
 	token  string /* 登录凭证 */
 	server int    /* 区 */
 	login  string /* 所在账号 */
+	inlist bool   /* 是否登陆 */
 }
 
 type Conf struct {
@@ -42,6 +43,7 @@ type Conf struct {
 	Pushplus_token string `yaml:"pushplus_token"`
 	Pushtg_token   string `yaml:"pushtg_token"`
 	Pushtg_chat_id string `yaml:"pushtg_chat_id"`
+	Blacklist      string `yaml:"blacklist"`
 	Logins         []struct {
 		Login    string `yaml:"login"`
 		Password string `yaml:"password"`
@@ -195,6 +197,9 @@ func iniConf() {
 				log4go("读取配置", "ERROR").Fatalln(`配置文件错误,请检测`)
 			}
 		}
+	}
+	if !strings.HasSuffix(strings.TrimSpace(conf.Blacklist), ",") {
+		conf.Blacklist = conf.Blacklist + ","
 	}
 	log4go("读取配置", "INFO").Println(`读取配置成功`)
 }
@@ -377,6 +382,12 @@ func getRoles(server int, token string, login string) (users []User) {
 				server: server,
 				login:  login,
 			}
+			fmt.Println(conf.Blacklist)
+			if strings.Contains(conf.Blacklist, role.Name+",") {
+				users[n].inlist = true
+			} else {
+				users[n].inlist = false
+			}
 		}
 		defer wg.Done()
 	}
@@ -432,6 +443,10 @@ func waitcmd(ws *websocket.Conn, msg string, t int) {
  * @return {*}
  */
 func daily(user User) {
+	if user.inlist {
+		log4go(user.name, "INFO").Println("黑名单已跳过")
+		return
+	}
 	methodName := "日常任务"
 	name := user.name
 	id := user.id
