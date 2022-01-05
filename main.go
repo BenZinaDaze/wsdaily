@@ -2,7 +2,7 @@
  * @Description: 武神活跃号日常
  * @Author: benz1
  * @Date: 2021-12-29 16:10:57
- * @LastEditTime: 2022-01-05 15:25:03
+ * @LastEditTime: 2022-01-05 15:30:39
  * @LastEditors: benz1
  * @Reference:
  */
@@ -382,7 +382,6 @@ func getRoles(server int, token string, login string) (users []User) {
 				server: server,
 				login:  login,
 			}
-			fmt.Println(conf.Blacklist)
 			if strings.Contains(conf.Blacklist, role.Name+",") {
 				users[n].inlist = true
 			} else {
