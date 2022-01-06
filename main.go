@@ -2,7 +2,7 @@
  * @Description: 武神活跃号日常
  * @Author: benz1
  * @Date: 2021-12-29 16:10:57
- * @LastEditTime: 2022-01-06 12:32:31
+ * @LastEditTime: 2022-01-06 14:42:06
  * @LastEditors: benz1
  * @Reference:
  */
@@ -888,6 +888,15 @@ Loop:
 				case "jh":
 					if strings.Contains(gjson.Get(message_str, "desc").Str, "郭大侠犒赏全军，所有玩家获得200军功") {
 						write(ws, `stopstate,jh fam 8 start`)
+					} else {
+						log4go(name, "INFO").Println(`襄阳正在进行或失败,无法领取`)
+						if strings.Contains(level, "武帝") || strings.Contains(level, "武神") {
+							write(ws, `tm 回家自闭,jh fam 0 start,go west,go west,go north,go enter,go west,xiulian`)
+						} else {
+							write(ws, `tm 开始挖矿,wakuang`)
+						}
+						waitcmd(ws, "close", 2000)
+						break Loop
 					}
 				}
 				continue Loop
