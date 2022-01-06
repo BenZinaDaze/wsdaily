@@ -13,12 +13,16 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/knva/go-rocket-update/pkg/provider"
+	"github.com/knva/go-rocket-update/pkg/updater"
+	"github.com/tidwall/gjson"
 	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,18 +41,18 @@ type User struct {
 	login  string /* 所在账号 */
 	inlist bool   /* 是否登陆 */
 }
-
+type LoginData struct {
+	Login    string `yaml:"login"`
+	Password string `yaml:"password"`
+	Server   int    `yaml:"server"`
+}
 type Conf struct {
 	Cron           string `yaml:"cron"`
 	Pushplus_token string `yaml:"pushplus_token"`
 	Pushtg_token   string `yaml:"pushtg_token"`
 	Pushtg_chat_id string `yaml:"pushtg_chat_id"`
 	Blacklist      string `yaml:"blacklist"`
-	Logins         []struct {
-		Login    string `yaml:"login"`
-		Password string `yaml:"password"`
-		Server   int    `yaml:"server"`
-	}
+	Logins         []LoginData
 }
 
 var (
@@ -164,9 +168,22 @@ func newConf() {
 		return
 	}
 
-	var conf = []byte("cron: 0 30 6,14,22 * * *\nlogins:\n    - login: xxxxx\n      password: xxxxx\n      server: 1\n    - login: yyyyy\n      password: yyyyy\n      server: 2\n")
-
-	err := ioutil.WriteFile("./conf.yaml", conf, 0666)
+	logins := []LoginData{{
+		Login: `xxx`, Password: `xxx`, Server: 1,
+	}}
+	var conf = Conf{
+		Cron:           "0 30 6,14,22 * * *",
+		Pushplus_token: ``,
+		Pushtg_token:   ``,
+		Pushtg_chat_id: ``,
+		Blacklist:      ``,
+		Logins:         logins,
+	}
+	str, err := yaml.Marshal(conf)
+	if err != nil {
+		return
+	}
+	err = ioutil.WriteFile("./conf.yaml", str, 0666)
 	if err != nil {
 		return
 	}
@@ -504,19 +521,23 @@ Loop:
 			break Loop
 		}
 		message = regByte(message)
+
 		re := regexp.MustCompile(`^{.*}$`)
 		if matched := re.MatchString(string(message)); !matched {
 			message = []byte(`{type:"text",msg:"` + string(message) + `"}`)
 		}
+		message_str := string(regJsonData(message))
 		if len(string(message)) != 0 {
 			data := struct {
 				Type string `json:"type"`
 			}{}
-			unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-			if unmarshal_err != nil {
-				fmt.Println(string(regJsonData(message)))
-				log4go(methodName, "ERROR").Println(unmarshal_err)
-			}
+			//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+			//if unmarshal_err != nil {
+			//	fmt.Println(string(regJsonData(message)))
+			//	log4go(methodName, "ERROR").Println(unmarshal_err)
+			//}
+
+			data.Type = gjson.Get(message_str, `type`).Str
 			if data.Type == "roles" {
 				write(ws, "login "+id)
 				continue Loop
@@ -528,15 +549,15 @@ Loop:
 				continue Loop
 			}
 			if data.Type == "room" {
-				data := struct {
-					Type string `json:"type"`
-					Name string `json:"name"`
-				}{}
-				unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-				if unmarshal_err != nil {
-					log4go(methodName, "ERROR").Println(unmarshal_err)
-				}
-				room = data.Name
+				//data := struct {
+				//	Type string `json:"type"`
+				//	Name string `json:"name"`
+				//}{}
+				//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+				//if unmarshal_err != nil {
+				//	log4go(methodName, "ERROR").Println(unmarshal_err)
+				//}
+				room = gjson.Get(message_str, "name").Str
 				if strings.Contains(room, `副本区域`) {
 					waitcmd(ws, `cr over`, 500)
 					fbover = fbover - 1
@@ -558,40 +579,42 @@ Loop:
 				continue Loop
 			}
 			if data.Type == "loginerror" {
-				data := struct {
-					Type string `json:"type"`
-					Msg  string `json:"msg"`
-				}{}
-				unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-				if unmarshal_err != nil {
-					log4go(methodName, "ERROR").Println(unmarshal_err)
-				}
-				log4go(name, "ERROR").Println(data.Msg)
+				//data := struct {
+				//	Type string `json:"type"`
+				//	Msg  string `json:"msg"`
+				//}{}
+				//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+				//if unmarshal_err != nil {
+				//	log4go(methodName, "ERROR").Println(unmarshal_err)
+				//}
+				//log4go(name, "ERROR").Println(data.Msg)
+				msg := gjson.Get(message_str, "msg").Str
 				loselock.Lock()
-				text = text + name + " : " + data.Msg + `, 所在账号 ` + user.login + `\n`
+				text = text + name + " : " + msg + `, 所在账号 ` + user.login + `\n`
 				lose = lose + 1
 				loselock.Unlock()
 				ws.Close()
 				break Loop
 			}
 			if data.Type == "text" {
-				data := struct {
-					Type string `json:"type"`
-					Msg  string `json:"msg"`
-				}{}
-				unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-				if unmarshal_err != nil {
-					log4go(methodName, "ERROR").Println(unmarshal_err)
-				}
-				if gotoQa && strings.Contains(data.Msg, `你要看什么`) {
+				//data := struct {
+				//	Type string `json:"type"`
+				//	Msg  string `json:"msg"`
+				//}{}
+				//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+				//if unmarshal_err != nil {
+				//	log4go(methodName, "ERROR").Println(unmarshal_err)
+				//}
+				msg := gjson.Get(message_str, "msg").Str
+				if gotoQa && strings.Contains(msg, `你要看什么`) {
 					qa = true
 					gotoQa = false
 					waitcmd(ws, "tasks", 500)
 				}
 				if gotoSm {
-					if strings.Contains(data.Msg, `帮我找`) {
+					if strings.Contains(msg, `帮我找`) {
 						re := regexp.MustCompile(`<.*?>(.*?)</.*?>`)
-						result := re.FindStringSubmatch(data.Msg)[0]
+						result := re.FindStringSubmatch(msg)[0]
 						for _, buy := range buyNpcS {
 							for _, sale := range buy.sale {
 								if strings.Contains(sale, result) {
@@ -605,43 +628,43 @@ Loop:
 						}
 						write(ws, `task sm `+smNpc.id)
 					}
-					if strings.Contains(data.Msg, `师父让别人去找`) || strings.Contains(data.Msg, `你的师门任务完成了`) {
+					if strings.Contains(msg, `师父让别人去找`) || strings.Contains(msg, `你的师门任务完成了`) {
 						write(ws, `task sm `+smNpc.id)
 					}
-					if strings.Contains(data.Msg, `辛苦了， 你先去休息一下吧`) {
+					if strings.Contains(msg, `辛苦了， 你先去休息一下吧`) {
 						sm = true
 						gotoSm = false
 						waitcmd(ws, "tasks", 500)
 					}
 					re := regexp.MustCompile(`你的师门任务完成了，目前完成\d+/\d+个`)
-					if re.MatchString(data.Msg) {
-						result := re.FindStringSubmatch(data.Msg)
+					if re.MatchString(msg) {
+						result := re.FindStringSubmatch(msg)
 						log4go(name, "INFO").Println(result[0])
 					}
 				}
 				if gotoZb {
-					if strings.Contains(data.Msg, `你可以接别的逃犯来继续做`) {
+					if strings.Contains(msg, `你可以接别的逃犯来继续做`) {
 						write(ws, `ask3 `+zbNpc.id)
 					}
-					if strings.Contains(data.Msg, `你的追捕任务完成了，目前完成20/20个`) {
+					if strings.Contains(msg, `你的追捕任务完成了，目前完成20/20个`) {
 						zb = true
 						gotoZb = false
 						waitcmd(ws, "tasks", 500)
 					}
-					if strings.Contains(data.Msg, `你的追捕任务已经完成了`) || strings.Contains(data.Msg, `最近没有在逃的逃犯`) {
+					if strings.Contains(msg, `你的追捕任务已经完成了`) || strings.Contains(msg, `最近没有在逃的逃犯`) {
 						zb = true
 						gotoZb = false
 						waitcmd(ws, "tasks", 500)
 					}
 					re := regexp.MustCompile(`你的追捕任务完成了，目前完成\d+/\d+个`)
-					if re.MatchString(data.Msg) {
-						result := re.FindStringSubmatch(data.Msg)
+					if re.MatchString(msg) {
+						result := re.FindStringSubmatch(msg)
 						log4go(name, "INFO").Println(result[0])
 					}
 				}
 				if gotoFb {
 					re := regexp.MustCompile(`完成度`)
-					if re.MatchString(data.Msg) {
+					if re.MatchString(msg) {
 						log4go(name, "INFO").Println(`剩余副本次数: ` + strconv.Itoa(fbover))
 						if fbover <= 0 {
 							fb = true
@@ -652,49 +675,50 @@ Loop:
 				continue Loop
 			}
 			if data.Type == "items" {
-				data := struct {
-					Type  string `json:"type"`
-					Items []struct {
-						P    int64  `json:"p"`
-						Id   string `json:"id"`
-						Name string `json:"name"`
-					}
-				}{}
-				unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-				if unmarshal_err != nil {
-					log4go(methodName, "ERROR").Println(unmarshal_err)
-				}
-				for _, item := range data.Items {
-					if item.P == 1 {
+				//data := struct {
+				//	Type  string `json:"type"`
+				//	Items []struct {
+				//		P    int64  `json:"p"`
+				//		Id   string `json:"id"`
+				//		Name string `json:"name"`
+				//	}
+				//}{}
+				//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+				//if unmarshal_err != nil {
+				//	log4go(methodName, "ERROR").Println(unmarshal_err)
+				//}
+				items := gjson.Get(message_str, `items`).Array()
+				for _, item := range items {
+					if item.Get(`p`).Int() == 1 {
 						continue
 					}
-					if item.Name == "" {
+					if item.Get(`name`).Str == "" {
 						continue
 					}
 					if gotoQa {
-						if strings.Contains(item.Name, qaNpc.name) {
-							if strings.Contains(item.Name, name) {
+						if strings.Contains(item.Get(`name`).Str, qaNpc.name) {
+							if strings.Contains(item.Get(`name`).Str, name) {
 								isMe = true
 								gotoQa = false
 								waitcmd(ws, "tasks", 500)
 							} else {
-								write(ws, `ask2 `+item.Id+`,look bi`)
+								write(ws, `ask2 `+item.Get(`id`).Str+`,look bi`)
 							}
 						}
 					}
 					if gotoSm {
-						if strings.Contains(item.Name, smNpc.name) {
-							smNpc.id = item.Id
+						if strings.Contains(item.Get(`name`).Str, smNpc.name) {
+							smNpc.id = item.Get(`id`).Str
 							write(ws, `task sm `+smNpc.id)
 						}
-						if strings.Contains(item.Name, buyNpc.name) {
-							buyNpc.id = item.Id
+						if strings.Contains(item.Get(`name`).Str, buyNpc.name) {
+							buyNpc.id = item.Get(`id`).Str
 							write(ws, `sell all,list `+buyNpc.id)
 						}
 					}
 					if gotoZb {
-						if strings.Contains(item.Name, zbNpc.name) {
-							zbNpc.id = item.Id
+						if strings.Contains(item.Get(`name`).Str, zbNpc.name) {
+							zbNpc.id = item.Get(`id`).Str
 							write(ws, `ask1 `+zbNpc.id+`,ask2 `+zbNpc.id)
 						}
 					}
@@ -704,23 +728,24 @@ Loop:
 			if data.Type == "cmds" {
 				if gotoSm {
 					var giveup = ""
-					data := struct {
-						Type  string `json:"type"`
-						Items []struct {
-							Name string `json:"name"`
-							Cmd  string `json:"cmd"`
+					//data := struct {
+					//	Type  string `json:"type"`
+					//	Items []struct {
+					//		Name string `json:"name"`
+					//		Cmd  string `json:"cmd"`
+					//	}
+					//}{}
+					//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+					//if unmarshal_err != nil {
+					//	log4go(methodName, "ERROR").Println(unmarshal_err)
+					//}
+					items := gjson.Get(message_str, `items`).Array()
+					for _, item := range items {
+						if strings.Contains(item.Get(`name`).Str, "放弃") {
+							giveup = item.Get(`cmd`).Str
 						}
-					}{}
-					unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-					if unmarshal_err != nil {
-						log4go(methodName, "ERROR").Println(unmarshal_err)
-					}
-					for _, item := range data.Items {
-						if strings.Contains(item.Name, "放弃") {
-							giveup = item.Cmd
-						}
-						if item.Name == `上交`+buyNpc.item {
-							write(ws, item.Cmd)
+						if item.Get(`name`).Str == `上交`+buyNpc.item {
+							write(ws, item.Get(`cmd`).Str)
 							continue Loop
 						}
 					}
@@ -729,49 +754,51 @@ Loop:
 				continue Loop
 			}
 			if data.Type == "dialog" {
-				data := struct {
-					Type   string `json:"type"`
-					Dialog string `json:"dialog"`
-				}{}
-				unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-				if unmarshal_err != nil {
-					log4go(methodName, "ERROR").Println(unmarshal_err)
-				}
-				switch data.Dialog {
+				//data := struct {
+				//	Type   string `json:"type"`
+				//	Dialog string `json:"dialog"`
+				//}{}
+				//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+				//if unmarshal_err != nil {
+				//	log4go(methodName, "ERROR").Println(unmarshal_err)
+				//}
+				dialog := gjson.Get(message_str, `dialog`).Str
+				switch dialog {
 				case "tasks":
-					data := struct {
-						Items []struct {
-							Id    string `json:"id"`
-							Desc  string `json:"desc"`
-							State int    `json:"state"`
-						}
-					}{}
-					unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-					if unmarshal_err != nil {
-						log4go(methodName, "ERROR").Println(unmarshal_err)
-					}
-					if len(data.Items) != 0 {
-						for _, item := range data.Items {
-							if item.State == 2 {
-								write(ws, `taskover `+item.Id)
+					//data := struct {
+					//	Items []struct {
+					//		Id    string `json:"id"`
+					//		Desc  string `json:"desc"`
+					//		State int    `json:"state"`
+					//	}
+					//}{}
+					//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+					//if unmarshal_err != nil {
+					//	log4go(methodName, "ERROR").Println(unmarshal_err)
+					//}
+					items := gjson.Get(message_str, "items").Array()
+					if len(items) != 0 {
+						for _, item := range items {
+							if item.Get(`state`).Int() == 2 {
+								write(ws, `taskover `+item.Get(`id`).Str)
 							}
-							switch item.Id {
+							switch item.Get(`id`).Str {
 							case "signin":
 								if isMe {
 									qa = true
 								} else {
-									if strings.Contains(item.Desc, "还没有给首席请安") && family != "武馆" {
+									if strings.Contains(item.Get(`desc`).Str, "还没有给首席请安") && family != "武馆" {
 										qa = false
 									} else {
 										qa = true
 									}
 								}
-								if item.State == 3 {
+								if item.Get(`state`).Int() == 3 {
 									sm = true
 									fb = true
 								}
 								re := regexp.MustCompile(`今日副本完成次数：(\d+)`)
-								result := re.FindStringSubmatch(item.Desc)
+								result := re.FindStringSubmatch(item.Get(`desc`).Str)
 								s, _ := strconv.Atoi(result[1])
 								fbover = 20 - s
 								if fbover <= 0 {
@@ -781,20 +808,20 @@ Loop:
 									fb = false
 								}
 							case "sm":
-								if item.State == 3 {
+								if item.Get(`state`).Int() == 3 {
 									sm = true
 								}
 								re := regexp.MustCompile(`完成(\d+)/(\d+)`)
-								result := re.FindStringSubmatch(item.Desc)
+								result := re.FindStringSubmatch(item.Get(`desc`).Str)
 								s1, _ := strconv.Atoi(result[1])
 								s2, _ := strconv.Atoi(result[2])
 								smover = s2 - s1
 							case "yamen":
-								if item.State == 3 {
+								if item.Get(`state`).Int() == 3 {
 									zb = true
 								}
 								re := regexp.MustCompile(`完成(\d+)/(\d+)个，共连续完成(\d+)`)
-								result := re.FindStringSubmatch(item.Desc)
+								result := re.FindStringSubmatch(item.Get(`desc`).Str)
 								s1, _ := strconv.Atoi(result[1])
 								s2, _ := strconv.Atoi(result[2])
 								zbover = s2 - s1
@@ -844,16 +871,17 @@ Loop:
 						}
 					}
 				case "score":
-					data := struct {
-						Family string `json:"family"`
-						Level  string `json:"level"`
-					}{}
-					unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-					if unmarshal_err != nil {
-						log4go(methodName, "ERROR").Println(unmarshal_err)
-					}
-					family = data.Family
-					level = data.Level
+					//data := struct {
+					//	Family string `json:"family"`
+					//	Level  string `json:"level"`
+					//}{}
+					//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+					//if unmarshal_err != nil {
+					//	log4go(methodName, "ERROR").Println(unmarshal_err)
+					//}
+
+					family = gjson.Get(message_str, `family`).String()
+					level = gjson.Get(message_str, `level`).String()
 					if family == "无门无派" {
 						family = "武馆"
 					}
@@ -862,19 +890,20 @@ Loop:
 					waitcmd(ws, "tasks", 500)
 				case "list":
 					if gotoSm {
-						data := struct {
-							List []struct {
-								Id   string `json:"id"`
-								Name string `json:"name"`
-							} `json:"selllist"`
-						}{}
-						unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-						if unmarshal_err != nil {
-							log4go(methodName, "ERROR").Println(unmarshal_err)
-						}
-						for _, item := range data.List {
-							if strings.Contains(item.Name, buyNpc.item) {
-								write(ws, `buy 1 `+item.Id+` from `+buyNpc.id+`,`+ways[smNpc.way])
+						//data := struct {
+						//	List []struct {
+						//		Id   string `json:"id"`
+						//		Name string `json:"name"`
+						//	} `json:"selllist"`
+						//}{}
+						//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
+						//if unmarshal_err != nil {
+						//	log4go(methodName, "ERROR").Println(unmarshal_err)
+						//}
+						selllist := gjson.Get(message_str, "selllist").Array()
+						for _, item := range selllist {
+							if strings.Contains(item.Get("name").Str, buyNpc.item) {
+								write(ws, `buy 1 `+item.Get("id").Str+` from `+buyNpc.id+`,`+ways[smNpc.way])
 							}
 						}
 					}
@@ -950,6 +979,25 @@ func task() {
  * @return {*}
  */
 func main() {
+
+	u := &updater.Updater{
+		Provider: &provider.Github{
+			RepositoryURL: "github.com/BenZinaDaze/wsdaily",
+			ArchiveName:   fmt.Sprintf("wsdaily_%s_%s.zip", runtime.GOOS, runtime.GOARCH),
+		},
+		ExecutableName: fmt.Sprintf("wsdaily"),
+		Version:        "v1.06", // 注意每次更新需要更新这个版本
+	}
+	fmt.Println(fmt.Sprintf("平台:%s_%s,版本:%s", runtime.GOOS, runtime.GOARCH, u.Version))
+	res, err := u.Update();
+	if err != nil {
+		log.Println(err)
+	}
+	if res == 2 {
+		log4go("更新","INFO").Println("已经更新到最新版本,请重启应用!")
+		os.Exit(0)
+	}
+
 
 	if !checkFileIsExist("./conf.yaml") {
 		newConf()
