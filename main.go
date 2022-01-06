@@ -2,7 +2,7 @@
  * @Description: 武神活跃号日常
  * @Author: benz1
  * @Date: 2021-12-29 16:10:57
- * @LastEditTime: 2022-01-06 12:27:04
+ * @LastEditTime: 2022-01-06 12:32:31
  * @LastEditors: benz1
  * @Reference:
  */
@@ -969,7 +969,7 @@ func update() {
 			ArchiveName:   fmt.Sprintf("wsdaily_%s_%s.zip", runtime.GOOS, runtime.GOARCH),
 		},
 		ExecutableName: "wsdaily",
-		Version:        "v1.06", // 注意每次更新需要更新这个版本
+		Version:        "v1.07", // 注意每次更新需要更新这个版本
 	}
 	fmt.Printf("平台:%s_%s,版本:%s\n", runtime.GOOS, runtime.GOARCH, u.Version)
 	res, err := u.Update()

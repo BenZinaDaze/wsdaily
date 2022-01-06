@@ -1,11 +1,3 @@
-<!--
- * @Description: 
- * @Author: benz1
- * @Date: 2022-01-04 09:11:11
- * @LastEditTime: 2022-01-05 15:28:39
- * @LastEditors: benz1
- * @Reference: 
--->
 ## Go 版本武神活跃号日常
 
 - 自动师门
@@ -15,6 +7,8 @@
 - 结束自动挖矿
 - 支持定时、多账号
 - 支持TG,PUSHPLUS推送
+- v1.06开始支持自动更新 感谢 @knva 
+- 襄阳领低保换黄金
 
 ### 使用方法
 
@@ -24,6 +18,8 @@
         ./wsdaily
     2. 立即运行一次
         ./wsdaily --mode run
+    3. 襄阳领低保换黄金
+        ./wsdaily --mode xy
 
 ### 配置
 
