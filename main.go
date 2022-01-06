@@ -2,7 +2,7 @@
  * @Description: 武神活跃号日常
  * @Author: benz1
  * @Date: 2021-12-29 16:10:57
- * @LastEditTime: 2022-01-05 15:30:39
+ * @LastEditTime: 2022-01-06 12:27:04
  * @LastEditors: benz1
  * @Reference:
  */
@@ -13,9 +13,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/knva/go-rocket-update/pkg/provider"
-	"github.com/knva/go-rocket-update/pkg/updater"
-	"github.com/tidwall/gjson"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -27,6 +24,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/knva/go-rocket-update/pkg/provider"
+	"github.com/knva/go-rocket-update/pkg/updater"
+	"github.com/tidwall/gjson"
 
 	"github.com/gorilla/websocket"
 	"github.com/robfig/cron"
@@ -289,13 +290,13 @@ func getToken(login string, password string) (token string) {
 	data := `code=` + login + `&pwd=` + password
 	resp, err := http.Post(url, contentType, strings.NewReader(data))
 	if err != nil {
-		log4go(methodName, "ERROR").Fatalln(err)
+		log4go(methodName+login, "ERROR").Fatalln(err)
 		return
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log4go(methodName, "ERROR").Fatalln(err)
+		log4go(methodName+login, "ERROR").Fatalln(err)
 		return
 	}
 	bodyJson := struct {
@@ -304,15 +305,14 @@ func getToken(login string, password string) (token string) {
 	}{}
 	unmarshal_err := json.Unmarshal(body, &bodyJson)
 	if unmarshal_err != nil {
-		log4go(methodName, "ERROR").Fatalln(unmarshal_err)
+		log4go(methodName+login, "ERROR").Fatalln(unmarshal_err)
 	}
 	if bodyJson.Code == 0 {
-		log4go(methodName, "ERROR").Fatalln(bodyJson.Message)
+		log4go(methodName+login, "ERROR").Fatalln(bodyJson.Message)
 	}
 	if bodyJson.Code == 1 {
 		cookies := resp.Cookies()
 		token = cookies[0].Value + " " + cookies[1].Value
-		log4go(methodName, "INFO").Println("获取登录凭证成功")
 		wg.Done()
 	}
 	return
@@ -363,19 +363,14 @@ func getRoles(server int, token string, login string) (users []User) {
 	header.Set("Origin", "http://game.wsmud.com")
 	ws, _, err := websocket.DefaultDialer.Dial(urls[server], header)
 	if err != nil {
-		log4go(methodName, "ERROR").Fatalln(err)
+		log4go(methodName+login, "ERROR").Fatalln(err)
 		return
 	}
 	defer ws.Close()
 	waitcmd(ws, token, 500)
-	// err = ws.WriteMessage(websocket.TextMessage, []byte(token))
-	if err != nil {
-		log4go(methodName, "ERROR").Fatalln(err)
-		return
-	}
 	_, message, err := ws.ReadMessage()
 	if err != nil {
-		log4go(methodName, "ERROR").Fatalln(err)
+		log4go(methodName+login, "ERROR").Fatalln(err)
 		return
 	}
 	roles := struct {
@@ -387,7 +382,7 @@ func getRoles(server int, token string, login string) (users []User) {
 	}{}
 	unmarshal_err := json.Unmarshal(regJsonData(message), &roles)
 	if unmarshal_err != nil {
-		log4go(methodName, "ERROR").Fatalln(unmarshal_err)
+		log4go(methodName+login, "ERROR").Fatalln(unmarshal_err)
 	}
 	if roles.Type == "roles" {
 		users = make([]User, len(roles.Roles))
@@ -407,7 +402,6 @@ func getRoles(server int, token string, login string) (users []User) {
 		}
 		defer wg.Done()
 	}
-	log4go(methodName, "INFO").Println("获取角色成功")
 	return
 }
 
@@ -454,11 +448,12 @@ func waitcmd(ws *websocket.Conn, msg string, t int) {
 }
 
 /**
- * @description: 		日常任务
+ * @description:		日常任务
  * @param {User} user	角色
+ * @param {int} mode	模式 0日常 1襄阳
  * @return {*}
  */
-func daily(user User) {
+func daily(user User, mode int) {
 	if user.inlist {
 		log4go(user.name, "INFO").Println("黑名单已跳过")
 		return
@@ -492,8 +487,16 @@ func daily(user User) {
 			way:  "扬州城-衙门正厅",
 			item: "",
 		}
-		room      = "" /* 房间名字 */
-		roomTimer = time.NewTimer(time.Second * time.Duration(120))
+		xyNpc = Npc{ /* 襄阳NPC */
+			id:   "",
+			name: "<hio>北侠</hio> 郭靖",
+			way:  "襄阳城-广场",
+			item: "",
+		}
+		roomTimer            = time.NewTimer(time.Second * time.Duration(120))
+		room                 = ""    /* 房间名字 */
+		max_item_count int64 = 10    /* 身上格子 */
+		pack_is_full   bool  = false /* 背包是否已满 */
 	)
 	var header = http.Header{}
 	header.Set("Origin", "http://game.wsmud.com")
@@ -512,7 +515,11 @@ Loop:
 	for {
 		select {
 		case <-roomTimer.C:
-			waitcmd(ws, "tasks", 500)
+			if mode == 0 {
+				waitcmd(ws, "tasks", 500)
+			} else if mode == 1 {
+				waitcmd(ws, "jh fam 8", 500)
+			}
 		default:
 		}
 		_, message, err := ws.ReadMessage()
@@ -531,11 +538,6 @@ Loop:
 			data := struct {
 				Type string `json:"type"`
 			}{}
-			//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-			//if unmarshal_err != nil {
-			//	fmt.Println(string(regJsonData(message)))
-			//	log4go(methodName, "ERROR").Println(unmarshal_err)
-			//}
 
 			data.Type = gjson.Get(message_str, `type`).Str
 			if data.Type == "roles" {
@@ -544,19 +546,15 @@ Loop:
 			}
 			if data.Type == "login" {
 				log4go(name, "INFO").Println("登陆")
-				write(ws, `setting off_plist 1,setting off_move 1,setting off_move 1`)
-				waitcmd(ws, "score", 500)
+				write(ws, `setting off_plist 1,setting off_move 1`)
+				if mode == 0 {
+					waitcmd(ws, "pack,score", 500)
+				} else if mode == 1 {
+					waitcmd(ws, "jh fam 8", 500)
+				}
 				continue Loop
 			}
 			if data.Type == "room" {
-				//data := struct {
-				//	Type string `json:"type"`
-				//	Name string `json:"name"`
-				//}{}
-				//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-				//if unmarshal_err != nil {
-				//	log4go(methodName, "ERROR").Println(unmarshal_err)
-				//}
 				room = gjson.Get(message_str, "name").Str
 				if strings.Contains(room, `副本区域`) {
 					waitcmd(ws, `cr over`, 500)
@@ -579,16 +577,8 @@ Loop:
 				continue Loop
 			}
 			if data.Type == "loginerror" {
-				//data := struct {
-				//	Type string `json:"type"`
-				//	Msg  string `json:"msg"`
-				//}{}
-				//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-				//if unmarshal_err != nil {
-				//	log4go(methodName, "ERROR").Println(unmarshal_err)
-				//}
-				//log4go(name, "ERROR").Println(data.Msg)
 				msg := gjson.Get(message_str, "msg").Str
+				log4go(name, "ERROR").Println(msg)
 				loselock.Lock()
 				text = text + name + " : " + msg + `, 所在账号 ` + user.login + `\n`
 				lose = lose + 1
@@ -597,19 +587,42 @@ Loop:
 				break Loop
 			}
 			if data.Type == "text" {
-				//data := struct {
-				//	Type string `json:"type"`
-				//	Msg  string `json:"msg"`
-				//}{}
-				//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-				//if unmarshal_err != nil {
-				//	log4go(methodName, "ERROR").Println(unmarshal_err)
-				//}
 				msg := gjson.Get(message_str, "msg").Str
 				if gotoQa && strings.Contains(msg, `你要看什么`) {
 					qa = true
 					gotoQa = false
 					waitcmd(ws, "tasks", 500)
+				}
+				if strings.Contains(msg, `你拿不下那么多东西`) {
+					pack_is_full = true
+					if max_item_count == 100 {
+						loselock.Lock()
+						lose = lose + 1
+						text = text + name + ` : 身上格子已满,且格子达到100上限。 所在账号 ` + user.login + `\n`
+						loselock.Unlock()
+						if strings.Contains(level, "武帝") || strings.Contains(level, "武神") {
+							write(ws, `tm 回家自闭,jh fam 0 start,go west,go west,go north,go enter,go west,xiulian`)
+						} else {
+							write(ws, `tm 开始挖矿,wakuang`)
+						}
+						waitcmd(ws, "close", 2000)
+						break Loop
+					} else {
+						write(ws, `shop 2 1`)
+					}
+				}
+				if strings.Contains(msg, `你没有那么多的元宝`) && pack_is_full {
+					loselock.Lock()
+					lose = lose + 1
+					text = text + name + ` : 身上格子已满,且元宝不够背包扩充石。 所在账号 ` + user.login + `\n`
+					loselock.Unlock()
+					if strings.Contains(level, "武帝") || strings.Contains(level, "武神") {
+						write(ws, `tm 回家自闭,jh fam 0 start,go west,go west,go north,go enter,go west,xiulian`)
+					} else {
+						write(ws, `tm 开始挖矿,wakuang`)
+					}
+					waitcmd(ws, "close", 2000)
+					break Loop
 				}
 				if gotoSm {
 					if strings.Contains(msg, `帮我找`) {
@@ -672,21 +685,21 @@ Loop:
 						}
 					}
 				}
+				if mode == 1 {
+					if strings.Contains(msg, `你并没有军功可以兑换`) || strings.Contains(msg, `<hiy>二百两黄金</hiy>`) {
+						log4go(name, "INFO").Println(`军工兑换黄金`)
+						if strings.Contains(level, "武帝") || strings.Contains(level, "武神") {
+							write(ws, `tm 回家自闭,jh fam 0 start,go west,go west,go north,go enter,go west,xiulian`)
+						} else {
+							write(ws, `tm 开始挖矿,wakuang`)
+						}
+						waitcmd(ws, "close", 2000)
+						break Loop
+					}
+				}
 				continue Loop
 			}
 			if data.Type == "items" {
-				//data := struct {
-				//	Type  string `json:"type"`
-				//	Items []struct {
-				//		P    int64  `json:"p"`
-				//		Id   string `json:"id"`
-				//		Name string `json:"name"`
-				//	}
-				//}{}
-				//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-				//if unmarshal_err != nil {
-				//	log4go(methodName, "ERROR").Println(unmarshal_err)
-				//}
 				items := gjson.Get(message_str, `items`).Array()
 				for _, item := range items {
 					if item.Get(`p`).Int() == 1 {
@@ -722,23 +735,18 @@ Loop:
 							write(ws, `ask1 `+zbNpc.id+`,ask2 `+zbNpc.id)
 						}
 					}
+					if mode == 1 {
+						if strings.Contains(item.Get(`name`).Str, xyNpc.name) {
+							xyNpc.id = item.Get(`id`).Str
+							write(ws, `reward2 `+xyNpc.id+`,exchange1 `+xyNpc.id)
+						}
+					}
 				}
 				continue Loop
 			}
 			if data.Type == "cmds" {
 				if gotoSm {
 					var giveup = ""
-					//data := struct {
-					//	Type  string `json:"type"`
-					//	Items []struct {
-					//		Name string `json:"name"`
-					//		Cmd  string `json:"cmd"`
-					//	}
-					//}{}
-					//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-					//if unmarshal_err != nil {
-					//	log4go(methodName, "ERROR").Println(unmarshal_err)
-					//}
 					items := gjson.Get(message_str, `items`).Array()
 					for _, item := range items {
 						if strings.Contains(item.Get(`name`).Str, "放弃") {
@@ -754,28 +762,9 @@ Loop:
 				continue Loop
 			}
 			if data.Type == "dialog" {
-				//data := struct {
-				//	Type   string `json:"type"`
-				//	Dialog string `json:"dialog"`
-				//}{}
-				//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-				//if unmarshal_err != nil {
-				//	log4go(methodName, "ERROR").Println(unmarshal_err)
-				//}
 				dialog := gjson.Get(message_str, `dialog`).Str
 				switch dialog {
 				case "tasks":
-					//data := struct {
-					//	Items []struct {
-					//		Id    string `json:"id"`
-					//		Desc  string `json:"desc"`
-					//		State int    `json:"state"`
-					//	}
-					//}{}
-					//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-					//if unmarshal_err != nil {
-					//	log4go(methodName, "ERROR").Println(unmarshal_err)
-					//}
 					items := gjson.Get(message_str, "items").Array()
 					if len(items) != 0 {
 						for _, item := range items {
@@ -827,6 +816,9 @@ Loop:
 								zbover = s2 - s1
 							}
 						}
+						if mode != 0 {
+							continue Loop
+						}
 						log4go(name, "INFO").Println(`请安完成情况: ` + strconv.FormatBool(qa))
 						log4go(name, "INFO").Println(`师门完成情况: ` + strconv.FormatBool(sm) + `,剩余次数: ` + strconv.FormatInt(int64(smover), 10))
 						log4go(name, "INFO").Println(`副本完成情况: ` + strconv.FormatBool(fb) + `,剩余次数: ` + strconv.FormatInt(int64(fbover), 10))
@@ -855,7 +847,7 @@ Loop:
 						} else if !zb {
 							log4go(name, "INFO").Println(`开始追捕`)
 							gotoZb = true
-							write(ws, `shop 0 50,`+ways[zbNpc.way])
+							write(ws, `shop 0 30,`+ways[zbNpc.way])
 						} else {
 							succlock.Lock()
 							succ = succ + 1
@@ -871,15 +863,6 @@ Loop:
 						}
 					}
 				case "score":
-					//data := struct {
-					//	Family string `json:"family"`
-					//	Level  string `json:"level"`
-					//}{}
-					//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-					//if unmarshal_err != nil {
-					//	log4go(methodName, "ERROR").Println(unmarshal_err)
-					//}
-
 					family = gjson.Get(message_str, `family`).String()
 					level = gjson.Get(message_str, `level`).String()
 					if family == "无门无派" {
@@ -890,22 +873,21 @@ Loop:
 					waitcmd(ws, "tasks", 500)
 				case "list":
 					if gotoSm {
-						//data := struct {
-						//	List []struct {
-						//		Id   string `json:"id"`
-						//		Name string `json:"name"`
-						//	} `json:"selllist"`
-						//}{}
-						//unmarshal_err := json.Unmarshal(regJsonData(message), &data)
-						//if unmarshal_err != nil {
-						//	log4go(methodName, "ERROR").Println(unmarshal_err)
-						//}
 						selllist := gjson.Get(message_str, "selllist").Array()
 						for _, item := range selllist {
 							if strings.Contains(item.Get("name").Str, buyNpc.item) {
 								write(ws, `buy 1 `+item.Get("id").Str+` from `+buyNpc.id+`,`+ways[smNpc.way])
 							}
 						}
+					}
+				case "pack":
+					max_item_count = gjson.Get(message_str, "max_item_count").Int()
+					if strings.Contains(gjson.Get(message_str, "name").Str, `背包扩充石`) {
+						write(ws, `use `+gjson.Get(message_str, "id").Str)
+					}
+				case "jh":
+					if strings.Contains(gjson.Get(message_str, "desc").Str, "郭大侠犒赏全军，所有玩家获得200军功") {
+						write(ws, `stopstate,jh fam 8 start`)
 					}
 				}
 				continue Loop
@@ -916,24 +898,24 @@ Loop:
 
 /**
  * @description:                线程
- * @param {int} id              序号
+ * @param {int} mode            模式  0日常  1襄阳
  * @param {<-chanUser} jobs     任务
  * @param {chan<-User} result   结果
  * @return {*}
  */
-func worker(id int, jobs <-chan User, result chan<- User) {
+func worker(mode int, jobs <-chan User, result chan<- User) {
 	for job := range jobs {
-		daily(job)
+		daily(job, mode)
 		result <- job
 	}
 }
 
 /**
- * @description:	主任务
- * @param {*}
+ * @description:		任务
+ * @param {int} mode	模式  0日常  1襄阳
  * @return {*}
  */
-func task() {
+func task(mode int) {
 	log4go("定时任务", "INFO").Println(`开启所有日常任务`)
 	text = ""
 	lose = 0
@@ -941,6 +923,7 @@ func task() {
 	wg.Add(1)
 	urls = getWsUrl()
 	wg.Wait()
+	log4go("定时任务", "INFO").Println(`开始获取角色`)
 	users = []User{}
 	for _, login := range conf.Logins {
 		wg.Add(1)
@@ -950,10 +933,11 @@ func task() {
 		users = append(users, getRoles(login.Server, token, login.Login)...)
 		wg.Wait()
 	}
+	log4go("定时任务", "INFO").Println(`获取角色成功`)
 	jobs := make(chan User, 10086)
 	result := make(chan User, 10086)
 	for i := 0; i < 30; i++ {
-		go worker(1, jobs, result)
+		go worker(mode, jobs, result)
 	}
 	for _, user := range users {
 		jobs <- user
@@ -974,47 +958,54 @@ func task() {
 }
 
 /**
- * @description: 主函数
+ * @description: 自动更新
  * @param {*}
  * @return {*}
  */
-func main() {
-
+func update() {
 	u := &updater.Updater{
 		Provider: &provider.Github{
 			RepositoryURL: "github.com/BenZinaDaze/wsdaily",
 			ArchiveName:   fmt.Sprintf("wsdaily_%s_%s.zip", runtime.GOOS, runtime.GOARCH),
 		},
-		ExecutableName: fmt.Sprintf("wsdaily"),
+		ExecutableName: "wsdaily",
 		Version:        "v1.06", // 注意每次更新需要更新这个版本
 	}
-	fmt.Println(fmt.Sprintf("平台:%s_%s,版本:%s", runtime.GOOS, runtime.GOARCH, u.Version))
-	res, err := u.Update();
+	fmt.Printf("平台:%s_%s,版本:%s\n", runtime.GOOS, runtime.GOARCH, u.Version)
+	res, err := u.Update()
 	if err != nil {
-		log.Println(err)
+		log4go("更新出错", "ERROR").Println(err)
 	}
 	if res == 2 {
-		log4go("更新","INFO").Println("已经更新到最新版本,请重启应用!")
+		log4go("更新", "INFO").Println("已经更新到最新版本,请重启应用!")
 		os.Exit(0)
 	}
+}
 
-
+/**
+ * @description: 主函数
+ * @param {*}
+ * @return {*}
+ */
+func main() {
+	update()
 	if !checkFileIsExist("./conf.yaml") {
 		newConf()
 		log4go("配置文件不存在", "ERROR").Println(`已生成配置文件,请按规则配置参数,配置完成后重启应用.`)
 		return
 	}
-
 	iniConf()
 	flag.StringVar(&mode, "mode", "cron", "运行模式")
 	flag.Parse()
 	if mode == "cron" {
 		cr := cron.New()
-		cr.AddFunc(conf.Cron, task)
+		cr.AddFunc(conf.Cron, func() { task(0) })
 		cr.Start()
 		select {}
 	} else if mode == "run" {
-		task()
+		task(0)
+	} else if mode == "xy" {
+		task(1)
 	} else {
 		log4go("参数错误", "ERROR").Println(`MODE参数设置错误`)
 	}
