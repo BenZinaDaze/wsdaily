@@ -9,6 +9,7 @@
 - 支持TG,PUSHPLUS推送
 - v1.06开始支持自动更新 感谢 @knva 
 - 襄阳领低保换黄金
+- 角色定制扫荡 感谢 @knva 
 
 ### 使用方法
 
@@ -36,6 +37,32 @@
     pushtg_chat_id: xxxxxx
     # 黑名单 在名单内跳过日常,英文逗号分隔
     blacklist: 张三,李四
+    # 扫荡任务  需要扫荡的在对应副本的player中输入角色名,多个角色使用英文逗号分隔  例如:张三,李四
+    dungeonfast:
+        - dungeon: 天龙寺(困难)
+          player:
+        - dungeon: 血刀门
+          player:
+        - dungeon: 古墓派(简单)
+          player:
+        - dungeon: 古墓派(困难)
+          player:
+        - dungeon: 华山论剑
+          player:
+        - dungeon: 净念禅宗(简单)
+          player:
+        - dungeon: 净念禅宗(困难)
+          player:
+        - dungeon: 慈航静斋(简单)
+          player:
+        - dungeon: 慈航静斋(困难)
+          player:
+        - dungeon: 阴阳谷
+          player:
+        - dungeon: 战神殿(简单)
+          player:
+        - dungeon: 战神殿(困难)
+          player:
     logins:
         - login: xxxxx
           password: xxxxxx
