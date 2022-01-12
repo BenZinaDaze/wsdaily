@@ -274,3 +274,21 @@ var buyNpcS = map[string]BuyNpc{
 		sale: []string{"<wht>铁剑</wht>", "<wht>钢刀</wht>", "<wht>铁棍</wht>", "<wht>铁杖</wht>", "<wht>铁镐</wht>", "<wht>飞镖</wht>"},
 	},
 }
+
+
+var fbcr = map[string]string{
+	"云梦沼泽":"cr cd/yunmeng/senlin 0",
+	"天龙寺(困难)":"cr tianlong/damen 1",
+	"血刀门":"cr xuedao/shankou 0",
+	"古墓派(简单)":"cr gumu/gumukou 0",
+	"古墓派(困难)":"cr gumu/gumukou 1",
+	"华山论剑":"cr huashan/lunjian/leitaixia 0",
+	"侠客岛":"cr xkd/shimen 0",
+	"净念禅宗(简单)":"cr chanzong/shanmen 0",
+	"净念禅宗(困难)":"cr chanzong/shanmen 1",
+	"慈航静斋(简单)":"cr cihang/shanmen 0",
+	"慈航静斋(困难)":"cr cihang/shanmen 1",
+	"阴阳谷":"cr yyg/ya 0",
+	"战神殿(简单)":"cr zsd/damen 0",
+	"战神殿(困难)":"cr zsd/damen 1",
+}
