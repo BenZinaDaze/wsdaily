@@ -892,7 +892,7 @@ Loop:
 							log4go(name, "INFO").Println(`开始副本`)
 							gotoFb = true
 							for _,data := range conf.Dungeon_fast{
-								log4go(name,"INFO").Println(data.Dungeon)
+								// log4go(name,"INFO").Println(data.Dungeon)
 								players := strings.Split(data.Player,",")
 								for _,p :=range players{
 									if p == name {
