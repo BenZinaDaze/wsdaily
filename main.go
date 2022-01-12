@@ -47,12 +47,18 @@ type LoginData struct {
 	Password string `yaml:"password"`
 	Server   int    `yaml:"server"`
 }
+type DungeonData struct{
+	Dungeon    string `yaml:"dungeon"`
+	Player string `yaml:"player"`
+}
+
 type Conf struct {
 	Cron           string `yaml:"cron"`
 	Pushplus_token string `yaml:"pushplus_token"`
 	Pushtg_token   string `yaml:"pushtg_token"`
 	Pushtg_chat_id string `yaml:"pushtg_chat_id"`
 	Blacklist      string `yaml:"blacklist"`
+	Dungeon_fast   []DungeonData `yaml:"dungeonfast"`
 	Logins         []LoginData
 }
 
@@ -68,6 +74,7 @@ var (
 	loselock sync.Mutex /* 失败锁 */
 	succlock sync.Mutex /* 成功锁 */
 )
+
 
 /**
  * @description:			通过pushplus推送
@@ -172,6 +179,23 @@ func newConf() {
 	logins := []LoginData{{
 		Login: `xxx`, Password: `xxx`, Server: 1,
 	}}
+
+	dungeonData := []DungeonData{
+		{Dungeon:"天龙寺(困难)",Player:""},
+		{Dungeon:"血刀门",Player:""},
+		{Dungeon:"古墓派(简单)",Player:""},
+		{Dungeon:"古墓派(困难)",Player:""},
+		{Dungeon:"华山论剑",Player:""},
+		{Dungeon:"侠客岛",Player:""},
+		{Dungeon:"净念禅宗(简单)",Player:""},
+		{Dungeon:"净念禅宗(困难)",Player:""},
+		{Dungeon:"慈航静斋(简单)",Player:""},
+		{Dungeon:"慈航静斋(困难)",Player:""},
+		{Dungeon:"阴阳谷",Player:""},
+		{Dungeon:"战神殿(简单)",Player:""},
+		{Dungeon:"战神殿(困难)",Player:""},
+		{Dungeon:"天龙寺(困难)",Player:""},
+		{Dungeon:"天龙寺(困难)",Player:""},}
 	var conf = Conf{
 		Cron:           "0 30 6,14,22 * * *",
 		Pushplus_token: ``,
@@ -179,6 +203,7 @@ func newConf() {
 		Pushtg_chat_id: ``,
 		Blacklist:      ``,
 		Logins:         logins,
+		Dungeon_fast: dungeonData,
 	}
 	str, err := yaml.Marshal(conf)
 	if err != nil {
@@ -434,6 +459,7 @@ func waitcmd(ws *websocket.Conn, msg string, t int) {
 	cmds := strings.Split(msg, ",")
 	if len(cmds) == 1 {
 		time.Sleep(time.Millisecond * time.Duration(t))
+		//fmt.Println(msg)
 		err := ws.WriteMessage(websocket.TextMessage, []byte(msg))
 		if err != nil {
 			log4go(msg, "ERROR").Println(err)
@@ -471,6 +497,8 @@ func daily(user User, mode int) {
 		zb     = false /* 追捕是否完成 */
 		sm     = false /* 师门是否完成 */
 		fb     = false /* 副本是否完成 */
+		jumpfb = false /* 跳过副本 */
+		sdfNum  = 0 /* 购买扫荡符 */
 		smover = -1    /* 剩余师门次数 */
 		fbover = -1    /* 剩余副本次数 */
 		zbover = -1    /* 剩余追捕次数 */
@@ -587,6 +615,7 @@ Loop:
 				break Loop
 			}
 			if data.Type == "text" {
+				//fmt.Println(message_str)
 				msg := gjson.Get(message_str, "msg").Str
 				if gotoQa && strings.Contains(msg, `你要看什么`) {
 					qa = true
@@ -684,6 +713,20 @@ Loop:
 							gotoFb = false
 						}
 					}
+				}
+				if strings.Contains(message_str,"完成100%才可以扫荡副本"){
+					log4go(name, "INFO").Println(`跳过副本,剩余次数: ` + strconv.Itoa(fbover))
+					// jump fb
+					fb = true
+					gotoFb = false
+					jumpfb=true
+					waitcmd(ws,"tasks",200)
+				}
+				if strings.Contains(message_str,"扫荡完成"){
+					fb = true
+					gotoFb = false
+					fbover =0
+					waitcmd(ws,"tasks",200)
 				}
 				if mode == 1 {
 					if strings.Contains(msg, `你并没有军功可以兑换`) || strings.Contains(msg, `<hiy>二百两黄金</hiy>`) {
@@ -786,6 +829,10 @@ Loop:
 									sm = true
 									fb = true
 								}
+								if jumpfb {
+									//fbover = 0  //jump fb
+									break
+								}
 								re := regexp.MustCompile(`今日副本完成次数：(\d+)`)
 								result := re.FindStringSubmatch(item.Get(`desc`).Str)
 								s, _ := strconv.Atoi(result[1])
@@ -796,6 +843,7 @@ Loop:
 								} else {
 									fb = false
 								}
+
 							case "sm":
 								if item.Get(`state`).Int() == 3 {
 									sm = true
@@ -843,7 +891,32 @@ Loop:
 						} else if !fb {
 							log4go(name, "INFO").Println(`开始副本`)
 							gotoFb = true
-							write(ws, `jh fam 0 start`)
+							for _,data := range conf.Dungeon_fast{
+								log4go(name,"INFO").Println(data.Dungeon)
+								players := strings.Split(data.Player,",")
+								for _,p :=range players{
+									if p == name {
+										val, ok := fbcr[data.Dungeon]
+										log4go(name, "INFO").Println(`执行扫荡`, data.Dungeon,fbover)
+										if sdfNum < fbover{
+											log4go(name, "INFO").Println(`扫荡符数量不足,自动购买`, sdfNum)
+											waitcmd(ws, `shop 0 `+strconv.FormatInt(int64(fbover-sdfNum), 10), 100)
+										}else{
+											log4go(name, "INFO").Println(`扫荡符数量充足`, sdfNum)
+										}
+										if ok{
+											waitcmd(ws, val+" "+strconv.FormatInt(int64(fbover),10), 200)
+										}else{
+											waitcmd(ws, data.Dungeon+" "+strconv.FormatInt(int64(fbover),10), 200)
+										}
+										gotoFb=false
+										fb=true
+									}
+								}
+							}
+							if gotoFb {
+								write(ws, `jh fam 0 start`)
+							}
 						} else if !zb {
 							log4go(name, "INFO").Println(`开始追捕`)
 							gotoZb = true
@@ -885,18 +958,27 @@ Loop:
 					if strings.Contains(gjson.Get(message_str, "name").Str, `背包扩充石`) {
 						write(ws, `use `+gjson.Get(message_str, "id").Str)
 					}
-				case "jh":
-					if strings.Contains(gjson.Get(message_str, "desc").Str, "郭大侠犒赏全军，所有玩家获得200军功") {
-						write(ws, `stopstate,jh fam 8 start`)
-					} else {
-						log4go(name, "INFO").Println(`襄阳正在进行或失败,无法领取`)
-						if strings.Contains(level, "武帝") || strings.Contains(level, "武神") {
-							write(ws, `tm 回家自闭,jh fam 0 start,go west,go west,go north,go enter,go west,xiulian`)
-						} else {
-							write(ws, `tm 开始挖矿,wakuang`)
+					items := gjson.Get(message_str,"items").Array()
+					for _,item :=range items{
+						if strings.Contains(item.Get("name").Str,"扫荡符"){
+							sdfNum = int(item.Get("count").Int())
 						}
-						waitcmd(ws, "close", 2000)
-						break Loop
+
+				    }
+				case "jh":
+					if mode == 1{
+						if strings.Contains(gjson.Get(message_str, "desc").Str, "郭大侠犒赏全军，所有玩家获得200军功") {
+							write(ws, `stopstate,jh fam 8 start`)
+						} else {
+							log4go(name, "INFO").Println(`襄阳正在进行或失败,无法领取`)
+							if strings.Contains(level, "武帝") || strings.Contains(level, "武神") {
+								write(ws, `tm 回家自闭,jh fam 0 start,go west,go west,go north,go enter,go west,xiulian`)
+							} else {
+								write(ws, `tm 开始挖矿,wakuang`)
+							}
+							waitcmd(ws, "close", 2000)
+							break Loop
+						}
 					}
 				}
 				continue Loop
