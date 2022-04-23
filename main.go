@@ -685,6 +685,11 @@ Loop:
 					}
 				}
 				if gotoZb {
+					if strings.Contains(msg,`连续次数大于你的最大连续次数`){
+						write(ws, `ask1 `+zbNpc.id)
+						time.Sleep(1*time.Second)
+						write(ws, `ask2 `+zbNpc.id)
+					}
 					if strings.Contains(msg, `你可以接别的逃犯来继续做`) {
 						write(ws, `ask3 `+zbNpc.id)
 					}
@@ -775,7 +780,7 @@ Loop:
 					if gotoZb {
 						if strings.Contains(item.Get(`name`).Str, zbNpc.name) {
 							zbNpc.id = item.Get(`id`).Str
-							write(ws, `ask1 `+zbNpc.id+`,ask2 `+zbNpc.id)
+							write(ws, `ask3 `+zbNpc.id)
 						}
 					}
 					if mode == 1 {
@@ -1060,7 +1065,7 @@ func update() {
 			ArchiveName:   fmt.Sprintf("wsdaily_%s_%s.zip", runtime.GOOS, runtime.GOARCH),
 		},
 		ExecutableName: "wsdaily",
-		Version:        "v1.08", // 注意每次更新需要更新这个版本
+		Version:        "v1.09", // 注意每次更新需要更新这个版本
 	}
 	fmt.Printf("平台:%s_%s,版本:%s\n", runtime.GOOS, runtime.GOARCH, u.Version)
 	res, err := u.Update()
