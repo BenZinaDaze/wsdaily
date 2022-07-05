@@ -270,7 +270,7 @@ func log4go(name string, msgType string) (logger *log.Logger) {
  */
 func getWsUrl() (urls map[int]string) {
 	methodName := "获取WS连接"
-	resp, err := http.Get("http://game.wsmud.com/game/getserver")
+	resp, err := http.Get("http://www.wamud.com/game/getserver")
 	if err != nil {
 		log4go(methodName, "ERROR").Fatalln(err)
 		return
@@ -310,7 +310,7 @@ func getWsUrl() (urls map[int]string) {
  */
 func getToken(login string, password string) (token string) {
 	methodName := "获取登录凭证"
-	url := "http://game.wsmud.com/userapi/login"
+	url := "http://www.wamud.com/userapi/login"
 	contentType := "application/x-www-form-urlencoded; charset=UTF-8"
 	data := `code=` + login + `&pwd=` + password
 	resp, err := http.Post(url, contentType, strings.NewReader(data))
@@ -385,7 +385,7 @@ func regJsonData(data []byte) []byte {
 func getRoles(server int, token string, login string) (users []User) {
 	methodName := "获取角色"
 	var header = http.Header{}
-	header.Set("Origin", "http://game.wsmud.com")
+	header.Set("Origin", "http://www.wamud.com")
 	ws, _, err := websocket.DefaultDialer.Dial(urls[server], header)
 	if err != nil {
 		log4go(methodName+login, "ERROR").Fatalln(err)
@@ -527,7 +527,7 @@ func daily(user User, mode int) {
 		pack_is_full   bool  = false /* 背包是否已满 */
 	)
 	var header = http.Header{}
-	header.Set("Origin", "http://game.wsmud.com")
+	header.Set("Origin", "http://www.wamud.com")
 	ws, _, err := websocket.DefaultDialer.Dial(urls[server], header)
 	if err != nil {
 		log4go(methodName, "ERROR").Println(err)
