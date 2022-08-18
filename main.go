@@ -1065,7 +1065,7 @@ func update() {
 			ArchiveName:   fmt.Sprintf("wsdaily_%s_%s.zip", runtime.GOOS, runtime.GOARCH),
 		},
 		ExecutableName: "wsdaily",
-		Version:        "v1.10", // 注意每次更新需要更新这个版本
+		Version:        "v1.11", // 注意每次更新需要更新这个版本
 	}
 	fmt.Printf("平台:%s_%s,版本:%s\n", runtime.GOOS, runtime.GOARCH, u.Version)
 	res, err := u.Update()
