@@ -270,7 +270,7 @@ func log4go(name string, msgType string) (logger *log.Logger) {
  */
 func getWsUrl() (urls map[int]string) {
 	methodName := "获取WS连接"
-	resp, err := http.Get("http://www.wamud.com/game/getserver")
+	resp, err := http.Get("http://47.242.148.121/game/getserver")
 	if err != nil {
 		log4go(methodName, "ERROR").Fatalln(err)
 		return
@@ -310,7 +310,7 @@ func getWsUrl() (urls map[int]string) {
  */
 func getToken(login string, password string) (token string) {
 	methodName := "获取登录凭证"
-	url := "http://www.wamud.com/userapi/login"
+	url := "http://47.242.148.121/userapi/login"
 	contentType := "application/x-www-form-urlencoded; charset=UTF-8"
 	data := `code=` + login + `&pwd=` + password
 	resp, err := http.Post(url, contentType, strings.NewReader(data))
