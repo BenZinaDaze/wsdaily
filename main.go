@@ -270,7 +270,7 @@ func log4go(name string, msgType string) (logger *log.Logger) {
  */
 func getWsUrl() (urls map[int]string) {
 	methodName := "获取WS连接"
-	resp, err := http.Get("http://47.242.148.121/game/getserver")
+	resp, err := http.Get("http://www.wamud.com/game/getserver")
 	if err != nil {
 		log4go(methodName, "ERROR").Fatalln(err)
 		return
