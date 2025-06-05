@@ -574,6 +574,8 @@ Loop:
 			}
 			if data.Type == "login" {
 				log4go(name, "INFO").Println("登陆")
+				waitcmd(ws, "team dismiss", 500)
+				waitcmd(ws, "relive", 500)
 				write(ws, `setting off_plist 1,setting off_move 1`)
 				if mode == 0 {
 					waitcmd(ws, "pack,score", 500)
