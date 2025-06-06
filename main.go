@@ -47,17 +47,17 @@ type LoginData struct {
 	Password string `yaml:"password"`
 	Server   int    `yaml:"server"`
 }
-type DungeonData struct{
-	Dungeon    string `yaml:"dungeon"`
-	Player string `yaml:"player"`
+type DungeonData struct {
+	Dungeon string `yaml:"dungeon"`
+	Player  string `yaml:"player"`
 }
 
 type Conf struct {
-	Cron           string `yaml:"cron"`
-	Pushplus_token string `yaml:"pushplus_token"`
-	Pushtg_token   string `yaml:"pushtg_token"`
-	Pushtg_chat_id string `yaml:"pushtg_chat_id"`
-	Blacklist      string `yaml:"blacklist"`
+	Cron           string        `yaml:"cron"`
+	Pushplus_token string        `yaml:"pushplus_token"`
+	Pushtg_token   string        `yaml:"pushtg_token"`
+	Pushtg_chat_id string        `yaml:"pushtg_chat_id"`
+	Blacklist      string        `yaml:"blacklist"`
 	Dungeon_fast   []DungeonData `yaml:"dungeonfast"`
 	Logins         []LoginData
 }
@@ -74,7 +74,6 @@ var (
 	loselock sync.Mutex /* 失败锁 */
 	succlock sync.Mutex /* 成功锁 */
 )
-
 
 /**
  * @description:			通过pushplus推送
@@ -181,21 +180,21 @@ func newConf() {
 	}}
 
 	dungeonData := []DungeonData{
-		{Dungeon:"天龙寺(困难)",Player:""},
-		{Dungeon:"血刀门",Player:""},
-		{Dungeon:"古墓派(简单)",Player:""},
-		{Dungeon:"古墓派(困难)",Player:""},
-		{Dungeon:"华山论剑",Player:""},
-		{Dungeon:"侠客岛",Player:""},
-		{Dungeon:"净念禅宗(简单)",Player:""},
-		{Dungeon:"净念禅宗(困难)",Player:""},
-		{Dungeon:"慈航静斋(简单)",Player:""},
-		{Dungeon:"慈航静斋(困难)",Player:""},
-		{Dungeon:"阴阳谷",Player:""},
-		{Dungeon:"战神殿(简单)",Player:""},
-		{Dungeon:"战神殿(困难)",Player:""},
-		{Dungeon:"天龙寺(困难)",Player:""},
-		{Dungeon:"天龙寺(困难)",Player:""},}
+		{Dungeon: "天龙寺(困难)", Player: ""},
+		{Dungeon: "血刀门", Player: ""},
+		{Dungeon: "古墓派(简单)", Player: ""},
+		{Dungeon: "古墓派(困难)", Player: ""},
+		{Dungeon: "华山论剑", Player: ""},
+		{Dungeon: "侠客岛", Player: ""},
+		{Dungeon: "净念禅宗(简单)", Player: ""},
+		{Dungeon: "净念禅宗(困难)", Player: ""},
+		{Dungeon: "慈航静斋(简单)", Player: ""},
+		{Dungeon: "慈航静斋(困难)", Player: ""},
+		{Dungeon: "阴阳谷", Player: ""},
+		{Dungeon: "战神殿(简单)", Player: ""},
+		{Dungeon: "战神殿(困难)", Player: ""},
+		{Dungeon: "天龙寺(困难)", Player: ""},
+		{Dungeon: "天龙寺(困难)", Player: ""}}
 	var conf = Conf{
 		Cron:           "0 30 6,14,22 * * *",
 		Pushplus_token: ``,
@@ -203,7 +202,7 @@ func newConf() {
 		Pushtg_chat_id: ``,
 		Blacklist:      ``,
 		Logins:         logins,
-		Dungeon_fast: dungeonData,
+		Dungeon_fast:   dungeonData,
 	}
 	str, err := yaml.Marshal(conf)
 	if err != nil {
@@ -498,7 +497,7 @@ func daily(user User, mode int) {
 		sm     = false /* 师门是否完成 */
 		fb     = false /* 副本是否完成 */
 		jumpfb = false /* 跳过副本 */
-		sdfNum  = 0 /* 购买扫荡符 */
+		sdfNum = 0     /* 购买扫荡符 */
 		smover = -1    /* 剩余师门次数 */
 		fbover = -1    /* 剩余副本次数 */
 		zbover = -1    /* 剩余追捕次数 */
@@ -574,6 +573,8 @@ Loop:
 			}
 			if data.Type == "login" {
 				log4go(name, "INFO").Println("登陆")
+				waitcmd(ws, "team dismiss", 500)
+				waitcmd(ws, "relive", 500)
 				write(ws, `setting off_plist 1,setting off_move 1`)
 				if mode == 0 {
 					waitcmd(ws, "pack,score", 500)
@@ -685,9 +686,9 @@ Loop:
 					}
 				}
 				if gotoZb {
-					if strings.Contains(msg,`连续次数大于你的最大连续次数`){
+					if strings.Contains(msg, `连续次数大于你的最大连续次数`) {
 						write(ws, `ask1 `+zbNpc.id)
-						time.Sleep(1*time.Second)
+						time.Sleep(1 * time.Second)
 						write(ws, `ask2 `+zbNpc.id)
 					}
 					if strings.Contains(msg, `你可以接别的逃犯来继续做`) {
@@ -719,19 +720,19 @@ Loop:
 						}
 					}
 				}
-				if strings.Contains(message_str,"完成100%才可以扫荡副本"){
+				if strings.Contains(message_str, "完成100%才可以扫荡副本") {
 					log4go(name, "INFO").Println(`跳过副本,剩余次数: ` + strconv.Itoa(fbover))
 					// jump fb
 					fb = true
 					gotoFb = false
-					jumpfb=true
-					waitcmd(ws,"tasks",200)
+					jumpfb = true
+					waitcmd(ws, "tasks", 200)
 				}
-				if strings.Contains(message_str,"扫荡完成"){
+				if strings.Contains(message_str, "扫荡完成") {
 					fb = true
 					gotoFb = false
-					fbover =0
-					waitcmd(ws,"tasks",200)
+					fbover = 0
+					waitcmd(ws, "tasks", 200)
 				}
 				if mode == 1 {
 					if strings.Contains(msg, `你并没有军功可以兑换`) || strings.Contains(msg, `<hiy>二百两黄金</hiy>`) {
@@ -896,26 +897,26 @@ Loop:
 						} else if !fb {
 							log4go(name, "INFO").Println(`开始副本`)
 							gotoFb = true
-							for _,data := range conf.Dungeon_fast{
+							for _, data := range conf.Dungeon_fast {
 								// log4go(name,"INFO").Println(data.Dungeon)
-								players := strings.Split(data.Player,",")
-								for _,p :=range players{
+								players := strings.Split(data.Player, ",")
+								for _, p := range players {
 									if p == name {
 										val, ok := fbcr[data.Dungeon]
-										log4go(name, "INFO").Println(`执行扫荡`, data.Dungeon,fbover)
-										if sdfNum < fbover{
+										log4go(name, "INFO").Println(`执行扫荡`, data.Dungeon, fbover)
+										if sdfNum < fbover {
 											log4go(name, "INFO").Println(`扫荡符数量不足,自动购买`, sdfNum)
 											waitcmd(ws, `shop 0 `+strconv.FormatInt(int64(fbover-sdfNum), 10), 100)
-										}else{
+										} else {
 											log4go(name, "INFO").Println(`扫荡符数量充足`, sdfNum)
 										}
-										if ok{
-											waitcmd(ws, val+" "+strconv.FormatInt(int64(fbover),10), 200)
-										}else{
-											waitcmd(ws, data.Dungeon+" "+strconv.FormatInt(int64(fbover),10), 200)
+										if ok {
+											waitcmd(ws, val+" "+strconv.FormatInt(int64(fbover), 10), 200)
+										} else {
+											waitcmd(ws, data.Dungeon+" "+strconv.FormatInt(int64(fbover), 10), 200)
 										}
-										gotoFb=false
-										fb=true
+										gotoFb = false
+										fb = true
 									}
 								}
 							}
@@ -963,15 +964,15 @@ Loop:
 					if strings.Contains(gjson.Get(message_str, "name").Str, `背包扩充石`) {
 						write(ws, `use `+gjson.Get(message_str, "id").Str)
 					}
-					items := gjson.Get(message_str,"items").Array()
-					for _,item :=range items{
-						if strings.Contains(item.Get("name").Str,"扫荡符"){
+					items := gjson.Get(message_str, "items").Array()
+					for _, item := range items {
+						if strings.Contains(item.Get("name").Str, "扫荡符") {
 							sdfNum = int(item.Get("count").Int())
 						}
 
-				    }
+					}
 				case "jh":
-					if mode == 1{
+					if mode == 1 {
 						if strings.Contains(gjson.Get(message_str, "desc").Str, "郭大侠犒赏全军，所有玩家获得200军功") {
 							write(ws, `stopstate,jh fam 8 start`)
 						} else {
@@ -1065,7 +1066,7 @@ func update() {
 			ArchiveName:   fmt.Sprintf("wsdaily_%s_%s.zip", runtime.GOOS, runtime.GOARCH),
 		},
 		ExecutableName: "wsdaily",
-		Version:        "v1.12", // 注意每次更新需要更新这个版本
+		Version:        "v1.13", // 注意每次更新需要更新这个版本
 	}
 	fmt.Printf("平台:%s_%s,版本:%s\n", runtime.GOOS, runtime.GOARCH, u.Version)
 	res, err := u.Update()
