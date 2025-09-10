@@ -309,7 +309,7 @@ func getWsUrl() (urls map[int]string) {
  */
 func getToken(login string, password string) (token string) {
 	methodName := "获取登录凭证"
-	url := "http://www.wamud.com/userapi/login"
+	url := "http://www.wamud.com/UserAPI/Login"
 	contentType := "application/x-www-form-urlencoded; charset=UTF-8"
 	data := `code=` + login + `&pwd=` + password
 	resp, err := http.Post(url, contentType, strings.NewReader(data))
@@ -1066,7 +1066,7 @@ func update() {
 			ArchiveName:   fmt.Sprintf("wsdaily_%s_%s.zip", runtime.GOOS, runtime.GOARCH),
 		},
 		ExecutableName: "wsdaily",
-		Version:        "v1.13", // 注意每次更新需要更新这个版本
+		Version:        "v1.14", // 注意每次更新需要更新这个版本
 	}
 	fmt.Printf("平台:%s_%s,版本:%s\n", runtime.GOOS, runtime.GOARCH, u.Version)
 	res, err := u.Update()
