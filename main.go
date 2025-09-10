@@ -326,6 +326,8 @@ func getToken(login string, password string) (token string) {
 	bodyJson := struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`
+		U       string `json:"u"`
+		P       string `json:"p"`
 	}{}
 	unmarshal_err := json.Unmarshal(body, &bodyJson)
 	if unmarshal_err != nil {
@@ -335,8 +337,7 @@ func getToken(login string, password string) (token string) {
 		log4go(methodName+login, "ERROR").Fatalln(bodyJson.Message)
 	}
 	if bodyJson.Code == 1 {
-		cookies := resp.Cookies()
-		token = cookies[0].Value + " " + cookies[1].Value
+		token = bodyJson.U + " " + bodyJson.P
 		wg.Done()
 	}
 	return
